@@ -1,23 +1,36 @@
+import { useState } from "react";
+import DashboardNavbar from "../components/dashboard/DashboardNavbar";
+import HeroSection, {
+  type SearchPayload,
+} from "../components/dashboard/HeroSection";
 import ScheduleSection from "../components/dashboard/ScheduleSection";
 import CatalogSection from "../components/dashboard/CatalogSection";
 import StatusSection from "../components/dashboard/StatusSection";
+import DashboardFooter from "../components/dashboard/DashboardFooter";
 
 export default function Dashboard() {
-  return (
-    // Menggunakan preferensi warna off-white dan dark charcoal kamu
-    <div className="min-h-screen bg-[#F8F9FA] text-[#121212] p-4 md:p-8 font-sans">
-      <div className="max-w-7xl mx-auto space-y-12">
-        {/* Header Dashboard */}
-        <header className="mb-8">
-          <h1 className="text-3xl font-bold">FILKOM Fasilitas</h1>
-          <p className="text-gray-600">Sistem Peminjaman Fasilitas & Alat</p>
-        </header>
+  const [selectedDate, setSelectedDate] = useState(() => new Date());
+  const [searchQuery, setSearchQuery] = useState("");
 
-        {/* 3 Bagian Utama */}
-        <ScheduleSection />
-        <CatalogSection />
+  const handleSearch = ({ query, date }: SearchPayload) => {
+    setSearchQuery(query);
+    setSelectedDate(date);
+    document.getElementById("katalog")?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  return (
+    <div className="flex min-h-screen w-full flex-col bg-canvas">
+      <DashboardNavbar />
+      <main className="flex-1">
+        <HeroSection selectedDate={selectedDate} onSearch={handleSearch} />
+        <ScheduleSection
+          selectedDate={selectedDate}
+          onSelectDate={setSelectedDate}
+        />
+        <CatalogSection searchQuery={searchQuery} />
         <StatusSection />
-      </div>
+      </main>
+      <DashboardFooter />
     </div>
   );
 }
