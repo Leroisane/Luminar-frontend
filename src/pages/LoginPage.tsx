@@ -55,14 +55,24 @@ export default function LoginPage() {
       const role = userData?.role?.toLowerCase();
       navigate(role === "admin" ? "/admin" : "/", { replace: true });
     } catch (err: unknown) {
+      console.error("Detail Error API:", err);
       const apiErr = err as {
-        response?: { data?: { message?: string; error?: string } };
+        response?: {
+          status?: number;
+          data?: { message?: string; error?: string; detail?: string };
+        };
       };
-      const message =
+      const status = apiErr?.response?.status;
+      const serverMsg =
         apiErr?.response?.data?.message ||
         apiErr?.response?.data?.error ||
-        "Login gagal. Periksa kembali email dan password kamu.";
-      setErrorMsg(message);
+        apiErr?.response?.data?.detail;
+
+      setErrorMsg(
+        serverMsg
+          ? `(${status}) ${serverMsg}`
+          : `Gagal terhubung ke server (${status || "Network/Ngrok Offline"}).`,
+      );
     }
   };
 
@@ -140,6 +150,51 @@ export default function LoginPage() {
             Daftar di sini
           </Link>
         </p>
+
+        {/* Bypass Sementara Selama Backend Ngrok Offline */}
+        {import.meta.env.DEV && (
+          <div className="pt-4 border-t border-gray-100 space-y-2">
+            <p className="text-[11px] text-center text-gray-400">
+              Mode Development (Bypass Login Lokal)
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setAuth(
+                    {
+                      name: "Muhammad Ihsan Fadillah",
+                      email: "muhamadihsan2005@gmail.com",
+                      role: "mahasiswa",
+                    },
+                    "dev-token-mhs",
+                  );
+                  navigate("/", { replace: true });
+                }}
+                className="py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition cursor-pointer"
+              >
+                Dev: Masuk Mahasiswa
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAuth(
+                    {
+                      name: "Admin Sarpras",
+                      email: "admin@ub.ac.id",
+                      role: "admin",
+                    },
+                    "dev-token-admin",
+                  );
+                  navigate("/admin", { replace: true });
+                }}
+                className="py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition cursor-pointer"
+              >
+                Dev: Masuk Admin
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

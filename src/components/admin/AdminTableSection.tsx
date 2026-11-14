@@ -83,9 +83,14 @@ export default function AdminTableSection({
   const from = filtered.length === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1;
   const to = from === 0 ? 0 : from + pageRows.length - 1;
 
-  // Kembali ke halaman 1 ketika filter berubah
-  useEffect(() => setPage(1), [category, query, globalSearch]);
+  const filterKey = `${category}|${query}|${globalSearch}`;
+  const [prevFilterKey, setPrevFilterKey] = useState(filterKey);
 
+  if (prevFilterKey !== filterKey) {
+    setPrevFilterKey(filterKey);
+    setPage(1);
+  }
+  
   const decide = (rows: BookingRequest[], decision: Decision) => {
     if (rows.length === 0) return;
     onDecide(
@@ -258,9 +263,12 @@ export default function AdminTableSection({
                     <FileText
                       className={cn(
                         "size-4",
-                        r.doc.kind === "pdf" ? "text-red-500" : "text-blue-500",
+                        r.doc?.kind === "pdf"
+                          ? "text-red-500"
+                          : "text-blue-500",
                       )}
                     />
+                    {r.doc?.name ?? "-"}
                     {r.doc.name}
                   </a>
                 </td>

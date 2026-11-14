@@ -43,14 +43,24 @@ export default function RegisterPage() {
       });
       navigate("/login", { replace: true });
     } catch (err: unknown) {
+      console.error("Detail Error API:", err);
       const apiErr = err as {
-        response?: { data?: { message?: string; error?: string } };
+        response?: {
+          status?: number;
+          data?: { message?: string; error?: string; detail?: string };
+        };
       };
-      const message =
+      const status = apiErr?.response?.status;
+      const serverMsg =
         apiErr?.response?.data?.message ||
         apiErr?.response?.data?.error ||
-        "Registrasi gagal. Pastikan email/NIM belum terdaftar.";
-      setErrorMsg(message);
+        apiErr?.response?.data?.detail;
+
+      setErrorMsg(
+        serverMsg
+          ? `(${status}) ${serverMsg}`
+          : `Gagal terhubung ke server (${status || "Network/Ngrok Offline"}).`,
+      );
     }
   };
 

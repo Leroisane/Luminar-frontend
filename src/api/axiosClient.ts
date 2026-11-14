@@ -1,10 +1,10 @@
 import axios from "axios";
 
 export const axiosClient = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL,
+  baseURL: import.meta.env.VITE_API_BASE_URL || "",
   headers: {
     "Content-Type": "application/json",
-    "ngrok-skip-browser-warning": "true", // Melewati landing page peringatan ngrok
+    "ngrok-skip-browser-warning": "true",
   },
 });
 
@@ -16,3 +16,5 @@ axiosClient.interceptors.request.use((config) => {
   }
   return config;
 });
+
+export default axiosClient;
