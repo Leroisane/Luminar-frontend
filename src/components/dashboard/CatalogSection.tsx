@@ -17,9 +17,13 @@ const filters: Filter[] = [
 
 interface Props {
   searchQuery: string;
+  onSelectFacility: (facility: Facility) => void;
 }
 
-export default function CatalogSection({ searchQuery }: Props) {
+export default function CatalogSection({
+  searchQuery,
+  onSelectFacility,
+}: Props) {
   const [filter, setFilter] = useState<Filter>("Semua");
   const { data = [], isLoading } = useFacilities();
 
@@ -88,14 +92,24 @@ export default function CatalogSection({ searchQuery }: Props) {
         )}
 
         {items.map((f) => (
-          <FacilityCard key={f.id} facility={f} />
+          <FacilityCard
+            key={f.id}
+            facility={f}
+            onSelect={() => onSelectFacility(f)}
+          />
         ))}
       </div>
     </section>
   );
 }
 
-function FacilityCard({ facility: f }: { facility: Facility }) {
+function FacilityCard({
+  facility: f,
+  onSelect,
+}: {
+  facility: Facility;
+  onSelect: () => void;
+}) {
   return (
     <article className="flex flex-col overflow-hidden rounded-2xl border border-line bg-white">
       <div className="relative h-[170px] bg-gradient-to-br from-slate-200 to-slate-300">
@@ -132,7 +146,11 @@ function FacilityCard({ facility: f }: { facility: Facility }) {
             </p>
             <p className="text-[13px] font-bold">{f.requirement.value}</p>
           </div>
-          <button className="rounded-lg bg-brand px-3.5 py-2 text-[13px] font-semibold text-white transition-colors hover:bg-brand-dark">
+          <button
+            type="button"
+            onClick={onSelect}
+            className="rounded-lg bg-brand px-3.5 py-2 text-[13px] font-semibold text-white transition-colors hover:bg-brand-dark cursor-pointer"
+          >
             Ajukan Peminjaman
           </button>
         </div>

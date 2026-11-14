@@ -1,7 +1,9 @@
+import { useState } from "react";
 import { Check, FileText, Headset, QrCode, ShieldCheck } from "lucide-react";
 import StatusBadge from "./StatusBadge";
 import { useMyBooking } from "../../hooks/useDashboardQueries";
 import type { BookingStep, StepState } from "../../types";
+import type { SubmittedBooking } from "./BookingModal";
 import { cn } from "../../utils/helpers";
 
 const noteColor: Record<StepState, string> = {
@@ -10,37 +12,84 @@ const noteColor: Record<StepState, string> = {
   pending: "text-slate-500",
 };
 
-export default function StatusSection() {
-  const { data: booking, isLoading } = useMyBooking();
+interface StatusSectionProps {
+  latestBooking: SubmittedBooking | null;
+  onClearLatestBooking: () => void;
+}
+
+export default function StatusSection({
+  latestBooking,
+  onClearLatestBooking,
+}: StatusSectionProps) {
+  const { data: apiBooking, isLoading } = useMyBooking();
+  const [isCancelled, setIsCancelled] = useState(false);
+  const [actionToast, setActionToast] = useState<string | null>(null);
+
+  const activeBooking = latestBooking ?? apiBooking;
+
+  const showToast = (msg: string) => {
+    setActionToast(msg);
+    setTimeout(() => setActionToast(null), 4000);
+  };
+
+  const handleCancelBooking = () => {
+    if (!window.confirm("Yakin ingin membatalkan pengajuan reservasi ini?")) {
+      return;
+    }
+    localStorage.removeItem("luminar_latest_booking");
+    onClearLatestBooking();
+    setIsCancelled(true);
+    showToast("Pengajuan reservasi berhasil dibatalkan.");
+  };
 
   return (
     <section
       id="riwayat"
       className="mx-auto w-full max-w-[1400px] px-4 pb-20 pt-16 sm:px-6 lg:px-10"
     >
-      <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
-        Status Peminjaman Anda
-      </h2>
-      <p className="mt-1 text-sm text-slate-600">
-        Pantau proses verifikasi permohonan peminjaman ruangan dan perlengkapan
-        secara transparan
-      </p>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
+            Status Peminjaman Anda
+          </h2>
+          <p className="mt-1 text-sm text-slate-600">
+            Pantau proses verifikasi permohonan peminjaman ruangan dan
+            perlengkapan secara transparan
+          </p>
+        </div>
 
-      {isLoading || !booking ? (
+        {actionToast && (
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs font-semibold text-brand">
+            {actionToast}
+          </div>
+        )}
+      </div>
+
+      {isLoading && !activeBooking ? (
         <div className="mt-6 h-[420px] animate-pulse rounded-3xl bg-slate-100" />
+      ) : !activeBooking || isCancelled ? (
+        <div className="mt-6 rounded-3xl border border-dashed border-line bg-white p-12 text-center">
+          <p className="text-sm font-semibold text-slate-700">
+            Belum ada pengajuan peminjaman aktif.
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            Pilih fasilitas pada Katalog di atas dan klik &ldquo;Ajukan
+            Peminjaman&rdquo; untuk membuat reservasi baru.
+          </p>
+        </div>
       ) : (
         <div className="mt-6 rounded-3xl border border-line bg-white p-5 sm:p-7">
           {/* Header */}
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line pb-5">
             <div className="flex flex-wrap items-center gap-3">
               <span className="rounded-md bg-slate-100 px-2.5 py-1 font-mono text-xs font-bold text-slate-700">
-                {booking.ticketId}
+                {activeBooking.ticketId}
               </span>
               <StatusBadge tone="amber" dot={false} className="px-3 py-1">
-                {booking.status}
+                {activeBooking.status}
               </StatusBadge>
               <span className="text-sm text-slate-600">
-                Diajukan: {booking.submittedAt}
+                Diajukan: {activeBooking.submittedAt}
               </span>
             </div>
             <span className="inline-flex items-center gap-2 text-sm font-medium text-slate-600">
@@ -51,32 +100,52 @@ export default function StatusSection() {
 
           {/* Info panel */}
           <dl className="mt-5 grid gap-4 rounded-xl bg-slate-50 px-5 py-4 md:grid-cols-3">
-            <Info label="Kegiatan Organisasi" value={booking.activity} />
-            <Info label="Ruang & Inventaris" value={booking.resources} />
-            <Info label="Jadwal Penggunaan" value={booking.schedule} accent />
+            <Info label="Kegiatan Organisasi" value={activeBooking.activity} />
+            <Info label="Ruang & Inventaris" value={activeBooking.resources} />
+            <Info
+              label="Jadwal Penggunaan"
+              value={activeBooking.schedule}
+              accent
+            />
           </dl>
 
           {/* Stepper */}
           <ol className="mt-8 grid gap-0 md:grid-cols-4">
-            {booking.steps.map((step, i) => (
+            {activeBooking.steps.map((step, i) => (
               <Step
                 key={step.id}
                 step={step}
-                last={i === booking.steps.length - 1}
-                nextState={booking.steps[i + 1]?.state}
+                last={i === activeBooking.steps.length - 1}
+                nextState={activeBooking.steps[i + 1]?.state}
               />
             ))}
           </ol>
 
           {/* Actions */}
           <div className="mt-8 flex flex-wrap items-center gap-3 border-t border-line pt-6">
-            <button className="inline-flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-dark">
+            <button
+              type="button"
+              onClick={() => window.print()}
+              className="inline-flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-dark cursor-pointer"
+            >
               <FileText className="size-4" /> Unduh Bukti Pengajuan (PDF)
             </button>
-            <button className="inline-flex items-center gap-2 rounded-lg border border-line px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50">
+            <button
+              type="button"
+              onClick={() =>
+                showToast(
+                  "Kontak PIC Sarpras FILKOM UB: Gedung G Lt. 1 (sarpras.filkom@ub.ac.id)",
+                )
+              }
+              className="inline-flex items-center gap-2 rounded-lg border border-line px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 cursor-pointer"
+            >
               <Headset className="size-4" /> Hubungi PIC Ruangan
             </button>
-            <button className="ml-auto text-sm font-semibold text-red-600 hover:underline">
+            <button
+              type="button"
+              onClick={handleCancelBooking}
+              className="ml-auto text-sm font-semibold text-red-600 hover:underline cursor-pointer"
+            >
               Batal Reservasi
             </button>
           </div>
@@ -114,7 +183,6 @@ function Step({
   last: boolean;
   nextState?: StepState;
 }) {
-  // Garis hijau hanya jika tahap ini selesai dan tahap berikutnya sudah dicapai
   const lineDone =
     step.state === "done" && nextState !== undefined && nextState !== "pending";
 
