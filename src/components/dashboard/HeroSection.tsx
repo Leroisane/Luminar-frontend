@@ -26,8 +26,16 @@ const categories = [
     title: "Ruang Kelas & Teater",
     info: "28 Ruangan Tersedia",
   },
-  { icon: Users, title: "Ruang Rapat & Seminar", info: "12 Ruangan Tersedia" },
-  { icon: Video, title: "Proyektor & Layar", info: "45 Unit Siap Pakai" },
+  {
+    icon: Users,
+    title: "Ruang Rapat & Seminar",
+    info: "12 Ruangan Tersedia",
+  },
+  {
+    icon: Video,
+    title: "Proyektor & Layar",
+    info: "45 Unit Siap Pakai",
+  },
   {
     icon: Camera,
     title: "Kamera & Audio Video",
@@ -43,6 +51,11 @@ export default function HeroSection({ selectedDate, onSearch }: Props) {
     e.preventDefault();
     const [y, m, d] = dateValue.split("-").map(Number);
     onSearch({ query: query.trim(), date: new Date(y, m - 1, d) });
+    document.getElementById("katalog")?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  const handleCategoryClick = () => {
+    document.getElementById("katalog")?.scrollIntoView({ behavior: "smooth" });
   };
 
   return (
@@ -59,11 +72,11 @@ export default function HeroSection({ selectedDate, onSearch }: Props) {
 
         <div className="flex min-h-[420px] flex-col items-center justify-center px-5 py-14 text-center sm:min-h-[490px] sm:px-10">
           <span className="inline-flex items-center gap-2 rounded-full bg-black/40 px-4 py-1.5 text-xs font-semibold text-white backdrop-blur">
-            <span className="size-2 rounded-full bg-accent" />
+            <span className="size-2 shrink-0 rounded-full bg-accent" />
             Sistem Terpadu Fasilitas Akademik FILKOM UB
           </span>
 
-          <h1 className="mt-5 text-4xl font-extrabold leading-[1.05] tracking-tight text-white sm:text-5xl lg:text-6xl">
+          <h1 className="mt-5 text-3xl font-extrabold leading-[1.08] tracking-tight text-white sm:text-5xl lg:text-6xl">
             Peminjaman Alat dan Ruang FILKOM
           </h1>
           <p className="mt-4 max-w-2xl text-base font-medium text-white/90 sm:text-lg">
@@ -73,7 +86,7 @@ export default function HeroSection({ selectedDate, onSearch }: Props) {
 
           <form
             onSubmit={handleSubmit}
-            className="mt-9 flex w-full max-w-[720px] flex-col gap-2 rounded-2xl bg-white p-2 shadow-xl sm:flex-row sm:items-center"
+            className="mt-9 flex w-full max-w-[740px] flex-col gap-2 rounded-2xl bg-white p-2 shadow-xl sm:flex-row sm:items-center"
           >
             <label className="flex flex-1 items-center gap-3 px-3 py-2">
               <Search className="size-5 shrink-0 text-slate-400" />
@@ -84,7 +97,7 @@ export default function HeroSection({ selectedDate, onSearch }: Props) {
                 className="w-full min-w-0 bg-transparent text-sm text-ink outline-none placeholder:text-slate-400"
               />
             </label>
-            <label className="flex items-center gap-2 border-t border-line px-3 py-2 sm:border-l sm:border-t-0">
+            <label className="flex shrink-0 items-center gap-2 border-t border-line px-3 py-2 sm:border-l sm:border-t-0">
               <CalendarDays className="size-4 shrink-0 text-slate-500" />
               <input
                 type="date"
@@ -95,9 +108,9 @@ export default function HeroSection({ selectedDate, onSearch }: Props) {
             </label>
             <button
               type="submit"
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-brand-dark"
+              className="inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-brand px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-brand-dark cursor-pointer"
             >
-              Cari Fasilitas <ArrowRight className="size-4" />
+              Cari Fasilitas <ArrowRight className="size-4 shrink-0" />
             </button>
           </form>
         </div>
@@ -106,22 +119,24 @@ export default function HeroSection({ selectedDate, onSearch }: Props) {
       {/* Category strip */}
       <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {categories.map(({ icon: Icon, title, info }) => (
-          <div
+          <button
             key={title}
-            className="flex items-center gap-4 rounded-2xl border border-line bg-white px-5 py-4"
+            type="button"
+            onClick={handleCategoryClick}
+            className="flex items-center gap-4 rounded-2xl border border-line bg-white px-5 py-4 text-left transition-all hover:border-brand/40 hover:shadow-sm cursor-pointer"
           >
-            <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-700">
+            <span className="flex size-11 aspect-square shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-700">
               <Icon className="size-5" />
             </span>
             <div className="min-w-0">
-              <p className="truncate text-[15px] font-bold leading-tight">
+              <p className="truncate text-[15px] font-bold leading-tight text-ink">
                 {title}
               </p>
               <p className="mt-0.5 text-xs font-medium text-slate-500">
                 {info}
               </p>
             </div>
-          </div>
+          </button>
         ))}
       </div>
     </section>

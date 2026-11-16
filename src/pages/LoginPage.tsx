@@ -26,6 +26,9 @@ export default function LoginPage() {
     resolver: zodResolver(loginSchema),
   });
 
+  const showDemoAccess =
+    import.meta.env.DEV || import.meta.env.VITE_DEMO_MODE === "true";
+
   const onSubmit = async (data: LoginFormValues) => {
     setErrorMsg(null);
     try {
@@ -78,7 +81,7 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen w-full bg-[#F8F9FA] text-[#121212] flex items-center justify-center p-4 font-sans">
-      <div className="w-full max-w-md bg-white rounded-2xl border border-gray-200 shadow-sm p-8 space-y-6">
+      <div className="w-full max-w-md bg-white rounded-2xl border border-gray-200 shadow-sm p-6 sm:p-8 space-y-6">
         <div className="space-y-1">
           <span className="inline-block px-2.5 py-1 bg-emerald-50 text-[#2E5B3C] text-xs font-bold rounded-md">
             FILKOM UB • Luminar
@@ -135,7 +138,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={isSubmitting}
-            className="w-full py-2.5 bg-[#2E5B3C] text-white text-sm font-semibold rounded-xl hover:bg-emerald-800 transition disabled:opacity-50"
+            className="w-full py-2.5 bg-[#2E5B3C] text-white text-sm font-semibold rounded-xl hover:bg-emerald-800 transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
           >
             {isSubmitting ? "Memproses..." : "Masuk"}
           </button>
@@ -151,11 +154,11 @@ export default function LoginPage() {
           </Link>
         </p>
 
-        {/* Bypass Sementara Selama Backend Ngrok Offline */}
-        {import.meta.env.DEV && (
-          <div className="pt-4 border-t border-gray-100 space-y-2">
+        {/* Bypass Sementara Selama Backend Ngrok Offline / Mode Demo Vercel */}
+        {showDemoAccess && (
+          <div className="pt-4 border-t border-gray-100 space-y-2.5">
             <p className="text-[11px] text-center text-gray-400">
-              Mode Development (Bypass Login Lokal)
+              Mode Pratinjau (Akses Cepat Tanpa Backend)
             </p>
             <div className="grid grid-cols-2 gap-2">
               <button
@@ -171,9 +174,9 @@ export default function LoginPage() {
                   );
                   navigate("/", { replace: true });
                 }}
-                className="py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition cursor-pointer"
+                className="whitespace-nowrap py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition cursor-pointer"
               >
-                Dev: Masuk Mahasiswa
+                Demo: Mahasiswa
               </button>
               <button
                 type="button"
@@ -188,9 +191,9 @@ export default function LoginPage() {
                   );
                   navigate("/admin", { replace: true });
                 }}
-                className="py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition cursor-pointer"
+                className="whitespace-nowrap py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition cursor-pointer"
               >
-                Dev: Masuk Admin
+                Demo: Admin
               </button>
             </div>
           </div>

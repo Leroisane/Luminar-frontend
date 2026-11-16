@@ -42,3 +42,15 @@
     scroll-behavior: auto;
   }
 }
+
+@page {
+  size: A4 portrait;
+  margin: 20mm;
+}
+
+@media print {
+  body.printing-letter main,
+  body.printing-letter footer {
+    display: none !important;
+  }
+}

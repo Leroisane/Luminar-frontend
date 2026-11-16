@@ -32,11 +32,11 @@ export default function DashboardNavbar() {
     <header className="sticky top-0 z-40 w-full border-b border-line bg-white/90 backdrop-blur">
       <div className="mx-auto flex h-[68px] w-full max-w-[1400px] items-center justify-between gap-4 px-4 sm:px-6 lg:px-10">
         {/* Brand */}
-        <a href="/" className="flex items-center gap-3">
-          <span className="flex size-10 items-center justify-center rounded-lg bg-brand text-white">
+        <a href="/" className="flex shrink-0 items-center gap-3">
+          <span className="flex size-10 aspect-square shrink-0 items-center justify-center rounded-lg bg-brand text-white">
             <GraduationCap className="size-5" />
           </span>
-          <span className="leading-tight">
+          <span className="leading-tight whitespace-nowrap">
             <span className="block text-lg font-bold tracking-tight">
               FILKOM UB
             </span>
@@ -54,7 +54,7 @@ export default function DashboardNavbar() {
               href={l.href}
               onClick={() => setActive(l.id)}
               className={cn(
-                "rounded-lg px-4 py-1.5 text-sm font-semibold transition-colors",
+                "whitespace-nowrap rounded-lg px-4 py-1.5 text-sm font-semibold transition-colors",
                 active === l.id
                   ? "bg-brand text-white"
                   : "text-slate-700 hover:bg-white",
@@ -66,7 +66,7 @@ export default function DashboardNavbar() {
         </nav>
 
         {/* Actions */}
-        <div className="flex items-center gap-3">
+        <div className="flex shrink-0 items-center gap-3">
           {user ? (
             <>
               <div className="hidden items-center gap-2.5 sm:flex">
@@ -75,23 +75,25 @@ export default function DashboardNavbar() {
                 </span>
                 <div
                   aria-label="Profil"
-                  className="flex size-10 items-center justify-center rounded-full bg-brand text-white"
+                  className="flex size-10 aspect-square shrink-0 items-center justify-center rounded-full bg-brand text-white"
                 >
                   <User className="size-5" />
                 </div>
               </div>
               <button
+                type="button"
                 onClick={handleLogout}
-                className="hidden items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3.5 py-2 text-sm font-semibold text-red-600 transition-colors hover:bg-red-100 sm:inline-flex cursor-pointer"
+                className="hidden shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-red-200 bg-red-50 px-3.5 py-2 text-sm font-semibold text-red-600 transition-colors hover:bg-red-100 sm:inline-flex cursor-pointer"
               >
-                <LogOut className="size-4" />
+                <LogOut className="size-4 shrink-0" />
                 Keluar
               </button>
             </>
           ) : (
             <button
+              type="button"
               onClick={() => navigate("/login")}
-              className="hidden rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-dark sm:block cursor-pointer"
+              className="hidden shrink-0 whitespace-nowrap rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-dark sm:block cursor-pointer"
             >
               Masuk / Akun Civitas
             </button>
@@ -99,10 +101,11 @@ export default function DashboardNavbar() {
 
           {/* Mobile hamburger button */}
           <button
+            type="button"
             aria-label="Buka menu"
             aria-expanded={open}
             onClick={() => setOpen((v) => !v)}
-            className="flex size-10 items-center justify-center rounded-lg border border-line md:hidden"
+            className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-line md:hidden cursor-pointer"
           >
             {open ? <X className="size-5" /> : <Menu className="size-5" />}
           </button>
@@ -136,11 +139,12 @@ export default function DashboardNavbar() {
                   {user.name || user.email}
                 </span>
                 <button
+                  type="button"
                   onClick={() => {
                     setOpen(false);
-                    handleLogout();
+                    void handleLogout();
                   }}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-100"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-100 cursor-pointer"
                 >
                   <LogOut className="size-3.5" />
                   Keluar
@@ -148,11 +152,12 @@ export default function DashboardNavbar() {
               </div>
             ) : (
               <button
+                type="button"
                 onClick={() => {
                   setOpen(false);
                   navigate("/login");
                 }}
-                className="mt-2 rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white sm:hidden"
+                className="mt-2 rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white sm:hidden cursor-pointer"
               >
                 Masuk / Akun Civitas
               </button>
