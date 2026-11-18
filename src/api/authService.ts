@@ -1,4 +1,4 @@
-import { axiosClient } from "./axiosClient";
+import axiosClient from "./axiosClient";
 
 export interface LoginPayload {
   email: string;
@@ -8,26 +8,43 @@ export interface LoginPayload {
 export interface RegisterPayload {
   name: string;
   email: string;
-  nim?: string;
   password: string;
+  nim?: string;
+  phone?: string;
 }
 
 export const loginApi = async (payload: LoginPayload) => {
-  const response = await axiosClient.post("/api/v1/auth/login", payload);
-  return response.data;
+  const res = await axiosClient.post("/auth/login", payload);
+  return res.data;
 };
 
 export const registerApi = async (payload: RegisterPayload) => {
-  const response = await axiosClient.post("/api/v1/auth/register", payload);
-  return response.data;
+  const res = await axiosClient.post("/auth/register", payload);
+  return res.data;
 };
 
-export const getProfileApi = async () => {
-  const response = await axiosClient.get("/api/v1/auth/me");
-  return response.data;
+export const refreshTokenApi = async (refreshToken: string) => {
+  const res = await axiosClient.post("/auth/refresh", {
+    refresh_token: refreshToken,
+  });
+  return res.data;
 };
 
 export const logoutApi = async () => {
-  const response = await axiosClient.post("/api/v1/auth/logout");
-  return response.data;
+  try {
+    await axiosClient.post("/auth/logout");
+  } finally {
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("refresh_token");
+  }
+};
+
+export const getProfileApi = async () => {
+  const res = await axiosClient.get("/auth/me");
+  return res.data;
+};
+
+export const updateProfileApi = async (payload: Record<string, unknown>) => {
+  const res = await axiosClient.put("/profile", payload);
+  return res.data;
 };

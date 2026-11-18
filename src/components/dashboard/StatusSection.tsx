@@ -1,465 +1,329 @@
-import { useState } from "react";
-import {
-  Building2,
-  Check,
-  Clock,
-  Copy,
-  FileText,
-  Headset,
-  Mail,
-  MessageCircle,
-  QrCode,
-  ShieldCheck,
-  X,
-} from "lucide-react";
+import { useState, type FormEvent } from "react";
+import { AlertCircle, Edit3, FileText, X, XCircle } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import StatusBadge from "./StatusBadge";
-import { useMyBooking } from "../../hooks/useDashboardQueries";
-import type { BookingStep, StepState } from "../../types";
+import {
+  useMyBookingsList,
+  type BackendBookingItem,
+} from "../../hooks/useDashboardQueries";
+import {
+  cancelBookingApi,
+  resubmitBookingApi,
+  updateRevisionBookingApi,
+} from "../../api/facilityService";
+import { getApiErrorMessage } from "../../api/axiosClient";
 import type { SubmittedBooking } from "./BookingModal";
 import { cn } from "../../utils/helpers";
-
-const noteColor: Record<StepState, string> = {
-  done: "text-emerald-700",
-  current: "text-amber-600",
-  pending: "text-slate-500",
-};
 
 interface StatusSectionProps {
   latestBooking: SubmittedBooking | null;
   onClearLatestBooking: () => void;
 }
 
-function wrapPdfText(text: string, maxChars = 68): string[] {
-  const clean = text.replace(/[^\x20-\x7E]/g, "-");
-  const words = clean.split(" ");
-  const lines: string[] = [];
-  let current = "";
-
-  for (const word of words) {
-    if ((current + " " + word).trim().length <= maxChars) {
-      current = (current + " " + word).trim();
-    } else {
-      if (current) lines.push(current);
-      current = word;
-    }
-  }
-  if (current) lines.push(current);
-  return lines.length > 0 ? lines : ["-"];
-}
-
-function downloadBookingProofPdf(booking: {
-  ticketId: string;
-  status: string;
-  submittedAt: string;
-  activity: string;
-  resources: string;
-  schedule: string;
-  steps: BookingStep[];
-}) {
-  const esc = (s: string) =>
-    s.replace(/[^\x20-\x7E]/g, "-").replace(/[()\\]/g, "\\$&");
-
-  const rawLines: string[] = [
-    "FAKULTAS ILMU KOMPUTER - UNIVERSITAS BRAWIJAYA",
-    "BUKTI PENGAJUAN RESERVASI SARANA & PRASARANA (LUMINAR)",
-    "====================================================================",
-    `Nomor Tiket      : ${booking.ticketId}`,
-    `Status Terkini   : ${booking.status}`,
-    `Waktu Pengajuan  : ${booking.submittedAt}`,
-    "--------------------------------------------------------------------",
-    "DETAIL KEGIATAN & FASILITAS:",
-    ...wrapPdfText(`Kegiatan         : ${booking.activity}`, 70),
-    ...wrapPdfText(`Fasilitas        : ${booking.resources}`, 70),
-    ...wrapPdfText(`Jadwal Pakai     : ${booking.schedule}`, 70),
-    "--------------------------------------------------------------------",
-    "RIWAYAT TAHAPAN VERIFIKASI:",
-    ...booking.steps.map(
-      (s) =>
-        `${s.id}. ${s.title} [${s.state.toUpperCase()}]${s.note ? ` - ${s.note}` : ""}`,
-    ),
-    "====================================================================",
-    "Dokumen ini diterbitkan secara elektronik oleh Sistem Reservasi FILKOM UB.",
-    "Tunjukkan bukti ini kepada petugas Sarpras / Laboran saat hari penggunaan.",
-  ];
-
-  const ops = rawLines
-    .map((line, i) => `1 0 0 1 48 ${742 - i * 19} Tm (${esc(line)}) Tj`)
-    .join("\n");
-
-  const stream = `BT\n/F1 10 Tf\n${ops}\nET`;
-
-  const objects = [
-    "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
-    "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n",
-    "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\nendobj\n",
-    `4 0 obj\n<< /Length ${stream.length} >>\nstream\n${stream}\nendstream\nendobj\n`,
-    "5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>\nendobj\n",
-  ];
-
-  let pdf = "%PDF-1.4\n";
-  const offsets: number[] = [0];
-  for (const obj of objects) {
-    offsets.push(pdf.length);
-    pdf += obj;
-  }
-  const xrefPos = pdf.length;
-  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
-  for (let i = 1; i < offsets.length; i++) {
-    pdf += `${String(offsets[i]).padStart(10, "0")} 00000 n \n`;
-  }
-  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefPos}\n%%EOF`;
-
-  const blob = new Blob([pdf], { type: "application/pdf" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `Bukti_Pengajuan_${booking.ticketId}.pdf`;
-  link.click();
-  URL.revokeObjectURL(url);
-}
+const statusTabs = [
+  { key: "all", label: "Semua" },
+  { key: "pending", label: "Menunggu" },
+  { key: "perlu_revisi", label: "Perlu Revisi" },
+  { key: "approved", label: "Disetujui" },
+  { key: "rejected", label: "Ditolak" },
+];
 
 export default function StatusSection({
-  latestBooking,
   onClearLatestBooking,
 }: StatusSectionProps) {
-  const { data: apiBooking, isLoading } = useMyBooking();
-  const [isCancelled, setIsCancelled] = useState(false);
-  const [actionToast, setActionToast] = useState<string | null>(null);
-  const [isPicModalOpen, setIsPicModalOpen] = useState(false);
-  const [copiedContact, setCopiedContact] = useState(false);
+  const queryClient = useQueryClient();
+  const [statusTab, setStatusTab] = useState("all");
+  const { data: bookings = [], isLoading } = useMyBookingsList(statusTab);
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const activeBooking = latestBooking ?? apiBooking;
+  // Modal Revisi
+  const [revisionTarget, setRevisionTarget] =
+    useState<BackendBookingItem | null>(null);
+  const [revAgenda, setRevAgenda] = useState("");
+  const [revDocUrl, setRevDocUrl] = useState("");
+  const [isSubmittingRev, setIsSubmittingRev] = useState(false);
 
   const showToast = (msg: string) => {
-    setActionToast(msg);
-    window.setTimeout(() => setActionToast(null), 4000);
+    setToastMsg(msg);
+    window.setTimeout(() => setToastMsg(null), 4000);
   };
 
-  const handleDownloadPdf = () => {
-    if (!activeBooking) return;
-    downloadBookingProofPdf(activeBooking);
-    showToast(
-      `Bukti_Pengajuan_${activeBooking.ticketId}.pdf berhasil diunduh.`,
-    );
-  };
-
-  const handleCopyEmail = () => {
-    void navigator.clipboard?.writeText("sarpras.filkom@ub.ac.id");
-    setCopiedContact(true);
-    window.setTimeout(() => setCopiedContact(false), 2500);
-  };
-
-  const handleCancelBooking = () => {
-    if (!window.confirm("Yakin ingin membatalkan pengajuan reservasi ini?")) {
-      return;
+  const handleCancel = async (item: BackendBookingItem) => {
+    if (!window.confirm(`Batalkan pengajuan ${item.ticketId}?`)) return;
+    setErrorMsg(null);
+    try {
+      await cancelBookingApi(item.id);
+      onClearLatestBooking();
+      await queryClient.invalidateQueries({ queryKey: ["my-bookings"] });
+      showToast(`Pengajuan ${item.ticketId} berhasil dibatalkan.`);
+    } catch (err: unknown) {
+      setErrorMsg(getApiErrorMessage(err));
     }
-    localStorage.removeItem("luminar_latest_booking");
-    onClearLatestBooking();
-    setIsCancelled(true);
-    showToast("Pengajuan reservasi berhasil dibatalkan.");
   };
 
-  const picEmailSubject = activeBooking
-    ? encodeURIComponent(
-        `Konfirmasi Peminjaman [${activeBooking.ticketId}] - ${activeBooking.resources}`,
-      )
-    : encodeURIComponent("Pertanyaan Peminjaman Sarpras FILKOM UB");
-
-  const picWaText = activeBooking
-    ? encodeURIComponent(
-        `Halo PIC Sarpras FILKOM UB, saya ingin mengonfirmasi pengajuan peminjaman dengan nomor tiket ${activeBooking.ticketId} (${activeBooking.resources} - ${activeBooking.schedule}). Terima kasih.`,
-      )
-    : encodeURIComponent(
-        "Halo PIC Sarpras FILKOM UB, saya ingin menanyakan ketersediaan ruangan.",
-      );
+  const handleResubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!revisionTarget || isSubmittingRev) return;
+    setIsSubmittingRev(true);
+    setErrorMsg(null);
+    try {
+      await updateRevisionBookingApi(revisionTarget.id, {
+        agenda: revAgenda.trim() || revisionTarget.agenda,
+        activity_name: revAgenda.trim() || revisionTarget.activity,
+        document_url: revDocUrl.trim() || revisionTarget.documentUrl,
+      });
+      await resubmitBookingApi(revisionTarget.id);
+      await queryClient.invalidateQueries({ queryKey: ["my-bookings"] });
+      setRevisionTarget(null);
+      showToast("Revisi berhasil disimpan dan diajukan ulang.");
+    } catch (err: unknown) {
+      setErrorMsg(getApiErrorMessage(err));
+    } finally {
+      setIsSubmittingRev(false);
+    }
+  };
 
   return (
     <section
       id="riwayat"
       className="mx-auto w-full max-w-[1400px] px-4 pb-20 pt-16 sm:px-6 lg:px-10"
     >
-      <div className="flex flex-wrap items-end justify-between gap-3">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
-            Status Peminjaman Anda
+            Peminjaman Saya
           </h2>
           <p className="mt-1 text-sm text-slate-600">
-            Pantau proses verifikasi permohonan peminjaman ruangan dan
-            perlengkapan secara transparan
+            Atur peminjaman ruangan untuk kegiatan Anda, pantau revisi, dan
+            unduh surat izin resmi
           </p>
         </div>
 
-        {actionToast && (
-          <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs font-semibold text-brand">
-            {actionToast}
-          </div>
-        )}
+        <div className="flex flex-wrap gap-1.5">
+          {statusTabs.map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setStatusTab(tab.key)}
+              className={cn(
+                "rounded-lg px-3.5 py-1.5 text-xs font-bold transition cursor-pointer",
+                statusTab === tab.key
+                  ? "bg-brand text-white"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200",
+              )}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {isLoading && !activeBooking ? (
-        <div className="mt-6 h-[420px] animate-pulse rounded-3xl bg-slate-100" />
-      ) : !activeBooking || isCancelled ? (
-        <div className="mt-6 rounded-3xl border border-dashed border-line bg-white p-12 text-center">
-          <p className="text-sm font-semibold text-slate-700">
-            Belum ada pengajuan peminjaman aktif.
-          </p>
-          <p className="mt-1 text-xs text-slate-500">
-            Pilih fasilitas pada Katalog di atas dan klik &ldquo;Ajukan
-            Peminjaman&rdquo; untuk membuat reservasi baru.
-          </p>
+      {toastMsg && (
+        <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-xs font-semibold text-brand">
+          {toastMsg}
         </div>
-      ) : (
-        <div className="mt-6 rounded-3xl border border-line bg-white p-5 sm:p-7">
-          {/* Header */}
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line pb-5">
-            <div className="flex flex-wrap items-center gap-3">
-              <span className="rounded-md bg-slate-100 px-2.5 py-1 font-mono text-xs font-bold text-slate-700">
-                {activeBooking.ticketId}
-              </span>
-              <StatusBadge tone="amber" dot={false} className="px-3 py-1">
-                {activeBooking.status}
-              </StatusBadge>
-              <span className="text-sm text-slate-600">
-                Diajukan: {activeBooking.submittedAt}
-              </span>
-            </div>
-            <span className="inline-flex items-center gap-2 text-sm font-medium text-slate-600">
-              <ShieldCheck className="size-4 shrink-0" /> Verifikasi Satu Pintu
-              Kemahasiswaan FILKOM
-            </span>
-          </div>
-
-          {/* Info panel */}
-          <dl className="mt-5 grid gap-4 rounded-xl bg-slate-50 px-5 py-4 md:grid-cols-3">
-            <Info label="Kegiatan Organisasi" value={activeBooking.activity} />
-            <Info label="Ruang & Inventaris" value={activeBooking.resources} />
-            <Info
-              label="Jadwal Penggunaan"
-              value={activeBooking.schedule}
-              accent
-            />
-          </dl>
-
-          {/* Stepper */}
-          <ol className="mt-8 grid gap-0 md:grid-cols-4">
-            {activeBooking.steps.map((step, i) => (
-              <Step
-                key={step.id}
-                step={step}
-                last={i === activeBooking.steps.length - 1}
-                nextState={activeBooking.steps[i + 1]?.state}
-              />
-            ))}
-          </ol>
-
-          {/* Actions */}
-          <div className="mt-8 flex flex-col gap-3 border-t border-line pt-6 sm:flex-row sm:flex-wrap sm:items-center">
-            <button
-              type="button"
-              onClick={handleDownloadPdf}
-              className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-brand px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-brand-dark cursor-pointer"
-            >
-              <FileText className="size-4 shrink-0" /> Unduh Bukti Pengajuan
-              (PDF)
-            </button>
-            <button
-              type="button"
-              onClick={() => setIsPicModalOpen(true)}
-              className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg border border-line px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 cursor-pointer"
-            >
-              <Headset className="size-4 shrink-0" /> Hubungi PIC Ruangan
-            </button>
-            <button
-              type="button"
-              onClick={handleCancelBooking}
-              className="py-1 text-center text-sm font-semibold text-red-600 hover:underline sm:ml-auto sm:text-right cursor-pointer"
-            >
-              Batal Reservasi
-            </button>
-          </div>
+      )}
+      {errorMsg && (
+        <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-xs font-semibold text-red-700">
+          {errorMsg}
         </div>
       )}
 
-      {/* Modal Kontak PIC Ruangan & Layanan Sarpras */}
-      {isPicModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-2xl border border-line bg-white p-6 shadow-xl">
-            <div className="flex items-start justify-between border-b border-line pb-3.5">
-              <div className="flex items-center gap-2.5">
-                <span className="flex size-10 aspect-square shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-brand">
-                  <Headset className="size-5" />
-                </span>
-                <div>
-                  <h3 className="text-base font-bold text-slate-900">
-                    Layanan PIC Sarpras &amp; Lab
-                  </h3>
-                  <p className="text-xs text-slate-500">
-                    Koordinasi teknis ruangan, kunci akses, dan perlengkapan
-                  </p>
+      {isLoading ? (
+        <div className="mt-6 h-56 animate-pulse rounded-3xl bg-slate-100" />
+      ) : bookings.length === 0 ? (
+        <div className="mt-6 rounded-3xl border border-dashed border-line bg-white p-14 text-center">
+          <p className="text-sm font-semibold text-slate-600">
+            Belum ada peminjaman ruangan.
+          </p>
+          <p className="mt-1 text-xs text-slate-400">
+            Gunakan jadwal atau katalog di atas untuk mengajukan peminjaman
+            baru.
+          </p>
+        </div>
+      ) : (
+        <div className="mt-6 space-y-4">
+          {bookings.map((b) => {
+            const raw = b.rawStatus.toLowerCase();
+            const isApproved =
+              raw.includes("approve") || raw.includes("setuju");
+            const isRevision = raw.includes("revisi");
+            const isPending = raw === "pending" || raw === "submitted";
+
+            return (
+              <article
+                key={String(b.id)}
+                className="rounded-2xl border border-line bg-white p-5 sm:p-6"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line pb-4">
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    <span className="rounded-md bg-slate-100 px-2.5 py-1 font-mono text-xs font-bold text-slate-700">
+                      {b.ticketId}
+                    </span>
+                    <StatusBadge
+                      tone={isApproved ? "green" : "amber"}
+                      dot={false}
+                    >
+                      {b.status}
+                    </StatusBadge>
+                    <span className="text-xs text-slate-500">
+                      {b.lembagaName}
+                    </span>
+                  </div>
+                  <span className="text-xs font-semibold text-brand">
+                    {b.schedule}
+                  </span>
                 </div>
-              </div>
+
+                <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                  <div>
+                    <p className="text-[11px] font-medium text-slate-500">
+                      Ruangan / Fasilitas
+                    </p>
+                    <p className="text-sm font-bold text-ink">{b.resources}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-medium text-slate-500">
+                      Agenda Kegiatan
+                    </p>
+                    <p className="text-sm font-bold text-ink">{b.activity}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-medium text-slate-500">
+                      Program Kerja
+                    </p>
+                    <p className="text-sm font-semibold text-slate-700">
+                      {b.programKerja || "-"}
+                    </p>
+                  </div>
+                </div>
+
+                {b.revisionNote && (
+                  <div className="mt-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-xs text-amber-900">
+                    <AlertCircle className="mt-0.5 size-4 shrink-0 text-amber-600" />
+                    <div>
+                      <p className="font-bold">Catatan Revisi dari Admin:</p>
+                      <p>{b.revisionNote}</p>
+                    </div>
+                  </div>
+                )}
+
+                {b.rejectionReason && (
+                  <div className="mt-4 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3.5 py-2.5 text-xs text-red-900">
+                    <XCircle className="mt-0.5 size-4 shrink-0 text-red-600" />
+                    <div>
+                      <p className="font-bold">Alasan Penolakan:</p>
+                      <p>{b.rejectionReason}</p>
+                    </div>
+                  </div>
+                )}
+
+                <div className="mt-4 flex flex-wrap items-center gap-2.5 pt-2">
+                  {b.finalLetterUrl && (
+                    <a
+                      href={b.finalLetterUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-3.5 py-2 text-xs font-semibold text-white hover:bg-brand-dark"
+                    >
+                      <FileText className="size-3.5" /> Download Surat Final
+                    </a>
+                  )}
+
+                  {isRevision && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRevisionTarget(b);
+                        setRevAgenda(b.agenda ?? b.activity);
+                        setRevDocUrl(b.documentUrl ?? "");
+                      }}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-amber-700 cursor-pointer"
+                    >
+                      <Edit3 className="size-3.5" /> Perbaiki &amp; Ajukan Ulang
+                    </button>
+                  )}
+
+                  {isPending && (
+                    <button
+                      type="button"
+                      onClick={() => void handleCancel(b)}
+                      className="ml-auto text-xs font-semibold text-red-600 hover:underline cursor-pointer"
+                    >
+                      Batalkan Pengajuan
+                    </button>
+                  )}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Modal Revisi */}
+      {revisionTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <form
+            onSubmit={(e) => void handleResubmit(e)}
+            className="w-full max-w-md rounded-2xl border border-line bg-white p-6 shadow-xl"
+          >
+            <div className="flex items-center justify-between border-b border-line pb-3">
+              <h3 className="text-base font-bold text-ink">
+                Revisi Pengajuan ({revisionTarget.ticketId})
+              </h3>
               <button
                 type="button"
-                onClick={() => setIsPicModalOpen(false)}
-                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 cursor-pointer"
+                onClick={() => setRevisionTarget(null)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 cursor-pointer"
               >
                 <X className="size-5" />
               </button>
             </div>
-
-            <div className="mt-4 space-y-3 rounded-xl bg-slate-50 p-4 text-xs">
-              <div className="flex items-start gap-2.5">
-                <Building2 className="mt-0.5 size-4 shrink-0 text-brand" />
-                <div>
-                  <p className="font-bold text-slate-800">
-                    Loket Sarpras &amp; Laboratorium FILKOM UB
-                  </p>
-                  <p className="text-slate-600">
-                    Gedung G Lantai 1, Fakultas Ilmu Komputer UB
-                  </p>
-                </div>
+            <div className="mt-4 space-y-3 text-xs">
+              <div>
+                <label className="mb-1 block font-semibold text-slate-700">
+                  Agenda Kegiatan *
+                </label>
+                <input
+                  required
+                  value={revAgenda}
+                  onChange={(e) => setRevAgenda(e.target.value)}
+                  className="w-full rounded-xl border border-slate-300 px-3 py-2 outline-none focus:border-brand"
+                />
               </div>
-              <div className="flex items-start gap-2.5">
-                <Clock className="mt-0.5 size-4 shrink-0 text-brand" />
-                <div>
-                  <p className="font-bold text-slate-800">Jam Operasional</p>
-                  <p className="text-slate-600">
-                    Senin – Jumat, pukul 08.00 – 16.00 WIB
-                  </p>
-                </div>
+              <div>
+                <label className="mb-1 block font-semibold text-slate-700">
+                  Link Berkas Revisi (Google Drive)
+                </label>
+                <input
+                  type="url"
+                  value={revDocUrl}
+                  onChange={(e) => setRevDocUrl(e.target.value)}
+                  placeholder="https://drive.google.com/..."
+                  className="w-full rounded-xl border border-slate-300 px-3 py-2 outline-none focus:border-brand"
+                />
               </div>
-              {activeBooking && (
-                <div className="border-t border-slate-200 pt-2.5">
-                  <span className="text-slate-500">Referensi Tiket Anda: </span>
-                  <span className="font-mono font-bold text-brand">
-                    {activeBooking.ticketId}
-                  </span>
-                </div>
-              )}
             </div>
-
-            <div className="mt-4 space-y-2">
-              <a
-                href={`https://wa.me/6281234567890?text=${picWaText}`}
-                target="_blank"
-                rel="noreferrer"
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-brand-dark"
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setRevisionTarget(null)}
+                className="rounded-xl border border-line px-4 py-2 text-xs font-semibold text-slate-600 cursor-pointer"
               >
-                <MessageCircle className="size-4" /> Hubungi via WhatsApp PIC
-              </a>
-              <div className="grid grid-cols-2 gap-2">
-                <a
-                  href={`mailto:sarpras.filkom@ub.ac.id?subject=${picEmailSubject}`}
-                  className="flex items-center justify-center gap-1.5 rounded-xl border border-line px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
-                >
-                  <Mail className="size-3.5" /> Kirim Email
-                </a>
-                <button
-                  type="button"
-                  onClick={handleCopyEmail}
-                  className="flex items-center justify-center gap-1.5 rounded-xl border border-line px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 cursor-pointer"
-                >
-                  <Copy className="size-3.5" />
-                  {copiedContact ? "Email Tersalin!" : "Salin Email"}
-                </button>
-              </div>
+                Batal
+              </button>
+              <button
+                type="submit"
+                disabled={isSubmittingRev}
+                className="rounded-xl bg-brand px-4 py-2 text-xs font-semibold text-white hover:bg-brand-dark disabled:opacity-50 cursor-pointer"
+              >
+                {isSubmittingRev ? "Mengirim..." : "Simpan & Ajukan Ulang"}
+              </button>
             </div>
-          </div>
+          </form>
         </div>
       )}
     </section>
-  );
-}
-
-function Info({
-  label,
-  value,
-  accent,
-}: {
-  label: string;
-  value: string;
-  accent?: boolean;
-}) {
-  return (
-    <div>
-      <dt className="text-xs font-medium text-slate-500">{label}</dt>
-      <dd className={cn("mt-0.5 text-sm font-bold", accent && "text-brand")}>
-        {value}
-      </dd>
-    </div>
-  );
-}
-
-function Step({
-  step,
-  last,
-  nextState,
-}: {
-  step: BookingStep;
-  last: boolean;
-  nextState?: StepState;
-}) {
-  const lineDone =
-    step.state === "done" && nextState !== undefined && nextState !== "pending";
-
-  return (
-    <li className="flex gap-4 md:block">
-      <div className="flex flex-col items-center md:flex-row">
-        <StepMarker state={step.state} />
-        {!last && (
-          <span
-            aria-hidden
-            className={cn(
-              "my-1 min-h-8 w-0.5 flex-1 md:mx-3 md:my-0 md:h-0.5 md:min-h-0 md:w-auto",
-              lineDone ? "bg-brand" : "bg-slate-200",
-            )}
-          />
-        )}
-      </div>
-
-      <div className="pb-6 md:mt-3 md:pb-0 md:pr-4">
-        <p className="text-sm font-bold">
-          {step.id}. {step.title}
-        </p>
-        {step.timestamp && (
-          <p className="mt-0.5 text-xs text-slate-500">{step.timestamp}</p>
-        )}
-        {step.note && (
-          <p
-            className={cn(
-              "mt-0.5 text-xs font-semibold",
-              noteColor[step.state],
-            )}
-          >
-            {step.note}
-          </p>
-        )}
-        {step.description && (
-          <p className="mt-0.5 text-xs text-slate-500">{step.description}</p>
-        )}
-      </div>
-    </li>
-  );
-}
-
-function StepMarker({ state }: { state: StepState }) {
-  if (state === "done") {
-    return (
-      <span className="flex size-9 aspect-square shrink-0 items-center justify-center rounded-full bg-brand text-white">
-        <Check className="size-4" strokeWidth={3} />
-      </span>
-    );
-  }
-  if (state === "current") {
-    return (
-      <span className="flex size-9 aspect-square shrink-0 items-center justify-center rounded-full border-2 border-brand bg-white">
-        <span className="size-3 rounded-full bg-brand" />
-      </span>
-    );
-  }
-  return (
-    <span className="flex size-9 aspect-square shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-400">
-      <QrCode className="size-4" />
-    </span>
   );
 }

@@ -14,7 +14,11 @@ import {
   Search,
   X,
 } from "lucide-react";
-import { adminService } from "../../api/adminService";
+import { exportAdminBookingsExcelApi } from "../../api/adminService";
+import {
+  useAdminMasterItems,
+  useAdminMasterRooms,
+} from "../../hooks/useAdminQueries";
 import { useAuthStore } from "../../store/useAuthStore";
 import { cn } from "../../utils/helpers";
 
@@ -35,43 +39,19 @@ const links = [
 
 type LinkId = (typeof links)[number]["id"];
 
-const CATALOG_OVERVIEW = [
-  {
-    name: "Auditorium Algoritma (G2)",
-    category: "Auditorium",
-    status: "Tersedia",
-    pic: "Sarpras Gedung G",
-  },
-  {
-    name: "Lab Komputer Jaringan (G1.4)",
-    category: "Laboratorium",
-    status: "Tersedia",
-    pic: "Laboran Jarkom",
-  },
-  {
-    name: "Lab Pemrograman Dasar (G1.2)",
-    category: "Laboratorium",
-    status: "Terjadwal",
-    pic: "Laboran RPL",
-  },
-  {
-    name: "Ruang Kelas F3.1 – F3.4",
-    category: "Ruang Kelas",
-    status: "Tersedia",
-    pic: "Akademik Gedung F",
-  },
-  {
-    name: "Studio Multimedia & Podcast",
-    category: "Studio & Multimedia",
-    status: "Tersedia",
-    pic: "Unit Humas & Media",
-  },
-];
-
 export default function AdminNavbar({ pendingCount, search, onSearch }: Props) {
   const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
+
+  const { data: roomsData, isLoading: loadingRooms } = useAdminMasterRooms(
+    1,
+    50,
+  );
+  const { data: itemsData, isLoading: loadingItems } = useAdminMasterItems(
+    1,
+    50,
+  );
 
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState<LinkId>("approval");
@@ -94,45 +74,30 @@ export default function AdminNavbar({ pendingCount, search, onSearch }: Props) {
     "Rabu, 18 November 2026 • 09:00 – 12:00 WIB",
   );
 
-  const handleExportCSV = async () => {
+  const catalogOverview = [
+    ...(roomsData?.items ?? []).map((rm, idx) => ({
+      key: `room-${String(rm.id ?? idx)}`,
+      name: String(rm.name ?? "Ruangan FILKOM"),
+      category: rm.capacity ? `Ruangan • Kapasitas ${rm.capacity}` : "Ruangan",
+      status:
+        String(rm.status ?? "tersedia").toLowerCase() === "tersedia"
+          ? "Tersedia"
+          : String(rm.status ?? "Tersedia"),
+      pic: String(rm.building ?? rm.location ?? "Sarpras FILKOM"),
+    })),
+    ...(itemsData?.items ?? []).map((it, idx) => ({
+      key: `item-${String(it.id ?? idx)}`,
+      name: String(it.name ?? "Inventaris FILKOM"),
+      category: `Peralatan • Stok ${it.stock ?? it.quantity ?? 1}`,
+      status: Number(it.stock ?? it.quantity ?? 1) > 0 ? "Tersedia" : "Habis",
+      pic: String(it.location ?? "Loket Sarpras Gd. G Lt. 1"),
+    })),
+  ];
+
+  const handleExportReport = async () => {
     try {
-      const rows = await adminService.getRequests();
-      const list = Array.isArray(rows) ? rows : [];
-      const headers = [
-        "ID Tiket",
-        "Nama Pengaju",
-        "NIM / Identitas",
-        "Organisasi",
-        "Fasilitas",
-        "Tanggal",
-        "Waktu",
-        "Status",
-      ];
-
-      const csvBody = list.map((r: Record<string, unknown>) => {
-        const id = String(r.id ?? "-");
-        const name = String(r.name ?? r.applicant ?? r.applicantName ?? "-");
-        const identifier = String(r.identifier ?? r.nim ?? "-");
-        const org = String(r.org ?? r.organization ?? "-");
-        const room = String(r.room ?? r.facility ?? r.facilityName ?? "-");
-        const date = String(r.date ?? "-");
-        const time = String(r.time ?? "-");
-        const status = String(r.status ?? "pending");
-        return [id, name, identifier, org, room, date, time, status]
-          .map((col) => `"${col.replace(/"/g, '""')}"`)
-          .join(",");
-      });
-
-      const csvContent = "\uFEFF" + [headers.join(","), ...csvBody].join("\n");
-      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `Rekap_Peminjaman_FILKOM_${new Date().toISOString().slice(0, 10)}.csv`;
-      a.click();
-      URL.revokeObjectURL(url);
-
-      setExportToast("Laporan CSV berhasil diunduh.");
+      await exportAdminBookingsExcelApi();
+      setExportToast("Laporan Excel (.xlsx) berhasil diunduh.");
       window.setTimeout(() => setExportToast(null), 3500);
     } catch {
       setExportToast("Gagal mengekspor laporan.");
@@ -181,7 +146,7 @@ export default function AdminNavbar({ pendingCount, search, onSearch }: Props) {
       return;
     }
     if (id === "ekspor") {
-      void handleExportCSV();
+      void handleExportReport();
     }
   };
 
@@ -190,7 +155,7 @@ export default function AdminNavbar({ pendingCount, search, onSearch }: Props) {
     navigate("/login", { replace: true });
   };
 
-  const displayName = user?.name || "Pak Bambang S.T.";
+  const displayName = user?.name || "Admin Sarpras";
   const initials = displayName
     .split(" ")
     .slice(0, 2)
@@ -220,7 +185,7 @@ export default function AdminNavbar({ pendingCount, search, onSearch }: Props) {
             </span>
           </button>
 
-          {/* Desktop nav — seluruh item 1 baris penuh (whitespace-nowrap) */}
+          {/* Desktop nav */}
           <nav className="hidden items-center gap-1 xl:flex">
             {links.map((l) => (
               <button
@@ -314,10 +279,10 @@ export default function AdminNavbar({ pendingCount, search, onSearch }: Props) {
                       </li>
                       <li className="rounded-lg bg-slate-50 p-2.5">
                         <p className="font-semibold text-slate-800">
-                          Pemeliharaan AC Lab G1.4 terjadwal
+                          Sinkronisasi Kalender Ruangan Aktif
                         </p>
                         <p className="mt-0.5 text-slate-500">
-                          Cek Kalender Sentral untuk menghindari bentrok slot.
+                          Cek Kalender Sentral untuk memantau jadwal terisi.
                         </p>
                       </li>
                     </ul>
@@ -328,7 +293,7 @@ export default function AdminNavbar({ pendingCount, search, onSearch }: Props) {
 
             <span className="hidden h-7 w-px shrink-0 bg-line sm:block" />
 
-            {/* Profile Menu & Logout — avatar lingkaran sempurna (size-9 shrink-0 aspect-square) */}
+            {/* Profile Menu & Logout */}
             <div className="relative shrink-0">
               <button
                 type="button"
@@ -339,7 +304,7 @@ export default function AdminNavbar({ pendingCount, search, onSearch }: Props) {
                 className="flex shrink-0 items-center gap-2.5 rounded-full border border-line py-1 pl-1 pr-3 hover:bg-slate-50 cursor-pointer"
               >
                 <span className="flex size-9 aspect-square shrink-0 items-center justify-center rounded-full bg-brand text-xs font-bold text-white">
-                  {initials || "PB"}
+                  {initials || "AD"}
                 </span>
                 <span className="hidden text-left leading-tight whitespace-nowrap md:block">
                   <span className="block text-xs font-bold text-slate-900">
@@ -438,10 +403,10 @@ export default function AdminNavbar({ pendingCount, search, onSearch }: Props) {
         )}
       </header>
 
-      {/* Modal Ringkasan Katalog Ruang & Alat */}
+      {/* Modal Ringkasan Katalog Ruang & Alat (Data Live Backend) */}
       {catalogModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-2xl rounded-2xl border border-line bg-white p-6 shadow-xl">
+          <div className="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-line bg-white p-6 shadow-xl">
             <div className="flex items-start justify-between border-b border-line pb-3">
               <div className="flex items-center gap-2.5">
                 <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-brand">
@@ -466,29 +431,39 @@ export default function AdminNavbar({ pendingCount, search, onSearch }: Props) {
             </div>
 
             <div className="mt-4 divide-y divide-line rounded-xl border border-line">
-              {CATALOG_OVERVIEW.map((item) => (
-                <div
-                  key={item.name}
-                  className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm"
-                >
-                  <div>
-                    <p className="font-bold text-slate-900">{item.name}</p>
-                    <p className="text-xs text-slate-500">
-                      {item.category} • PIC: {item.pic}
-                    </p>
-                  </div>
-                  <span
-                    className={cn(
-                      "rounded-full px-3 py-1 text-xs font-semibold",
-                      item.status === "Tersedia"
-                        ? "bg-emerald-50 text-brand"
-                        : "bg-amber-50 text-amber-700",
-                    )}
+              {loadingRooms || loadingItems ? (
+                <p className="py-8 text-center text-xs text-slate-400">
+                  Memuat daftar inventaris...
+                </p>
+              ) : catalogOverview.length === 0 ? (
+                <p className="py-8 text-center text-xs text-slate-500">
+                  Belum ada data ruangan atau alat terdaftar.
+                </p>
+              ) : (
+                catalogOverview.map((item) => (
+                  <div
+                    key={item.key}
+                    className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm"
                   >
-                    {item.status}
-                  </span>
-                </div>
-              ))}
+                    <div>
+                      <p className="font-bold text-slate-900">{item.name}</p>
+                      <p className="text-xs text-slate-500">
+                        {item.category} • Lokasi: {item.pic}
+                      </p>
+                    </div>
+                    <span
+                      className={cn(
+                        "rounded-full px-3 py-1 text-xs font-semibold",
+                        item.status === "Tersedia"
+                          ? "bg-emerald-50 text-brand"
+                          : "bg-amber-50 text-amber-700",
+                      )}
+                    >
+                      {item.status}
+                    </span>
+                  </div>
+                ))
+              )}
             </div>
 
             <div className="mt-5 flex justify-end">

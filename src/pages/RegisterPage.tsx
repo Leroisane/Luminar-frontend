@@ -4,11 +4,14 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Link, useNavigate } from "react-router-dom";
 import { registerApi } from "../api/authService";
+import { getApiErrorMessage } from "../api/axiosClient";
 
 const registerSchema = z
   .object({
     name: z.string().min(3, "Nama lengkap minimal 3 karakter"),
     nim: z.string().min(10, "NIM tidak valid"),
+    prodi: z.string().min(1, "Pilih program studi"),
+    phone: z.string().min(8, "Nomor WhatsApp tidak valid"),
     email: z.string().email("Format email tidak valid"),
     password: z.string().min(6, "Password minimal 6 karakter"),
     confirmPassword: z.string(),
@@ -20,6 +23,14 @@ const registerSchema = z
 
 type RegisterFormValues = z.infer<typeof registerSchema>;
 
+const PRODI_LIST = [
+  "Teknik Informatika",
+  "Teknik Komputer",
+  "Sistem Informasi",
+  "Teknologi Informasi",
+  "Pendidikan Teknologi Informasi",
+];
+
 export default function RegisterPage() {
   const navigate = useNavigate();
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -30,37 +41,23 @@ export default function RegisterPage() {
     formState: { errors, isSubmitting },
   } = useForm<RegisterFormValues>({
     resolver: zodResolver(registerSchema),
+    defaultValues: {
+      prodi: "Teknologi Informasi",
+    },
   });
 
   const onSubmit = async (data: RegisterFormValues) => {
     setErrorMsg(null);
     try {
       await registerApi({
-        name: data.name,
-        nim: data.nim,
-        email: data.email,
+        name: data.name.trim(),
+        nim: data.nim.trim(),
+        email: data.email.trim(),
         password: data.password,
       });
-      navigate("/login", { replace: true });
+      navigate("/login", { replace: true, state: { registered: true } });
     } catch (err: unknown) {
-      console.error("Detail Error API:", err);
-      const apiErr = err as {
-        response?: {
-          status?: number;
-          data?: { message?: string; error?: string; detail?: string };
-        };
-      };
-      const status = apiErr?.response?.status;
-      const serverMsg =
-        apiErr?.response?.data?.message ||
-        apiErr?.response?.data?.error ||
-        apiErr?.response?.data?.detail;
-
-      setErrorMsg(
-        serverMsg
-          ? `(${status}) ${serverMsg}`
-          : `Gagal terhubung ke server (${status || "Network/Ngrok Offline"}).`,
-      );
+      setErrorMsg(getApiErrorMessage(err));
     }
   };
 
@@ -101,24 +98,66 @@ export default function RegisterPage() {
             )}
           </div>
 
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 mb-1">
+                NIM
+              </label>
+              <input
+                type="text"
+                placeholder="245150700111023"
+                {...register("nim")}
+                className="w-full px-3.5 py-2 text-sm border border-gray-300 rounded-xl focus:outline-none focus:border-[#2E5B3C]"
+              />
+              {errors.nim && (
+                <p className="text-xs text-red-600 mt-1">
+                  {errors.nim.message}
+                </p>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 mb-1">
+                No. WhatsApp
+              </label>
+              <input
+                type="tel"
+                placeholder="0812xxxxxxxx"
+                {...register("phone")}
+                className="w-full px-3.5 py-2 text-sm border border-gray-300 rounded-xl focus:outline-none focus:border-[#2E5B3C]"
+              />
+              {errors.phone && (
+                <p className="text-xs text-red-600 mt-1">
+                  {errors.phone.message}
+                </p>
+              )}
+            </div>
+          </div>
+
           <div>
             <label className="block text-xs font-semibold text-gray-700 mb-1">
-              NIM
+              Program Studi
             </label>
-            <input
-              type="text"
-              placeholder="245150700111023"
-              {...register("nim")}
-              className="w-full px-3.5 py-2 text-sm border border-gray-300 rounded-xl focus:outline-none focus:border-[#2E5B3C]"
-            />
-            {errors.nim && (
-              <p className="text-xs text-red-600 mt-1">{errors.nim.message}</p>
+            <select
+              {...register("prodi")}
+              className="w-full px-3.5 py-2 text-sm bg-white border border-gray-300 rounded-xl focus:outline-none focus:border-[#2E5B3C]"
+            >
+              {PRODI_LIST.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </select>
+            {errors.prodi && (
+              <p className="text-xs text-red-600 mt-1">
+                {errors.prodi.message}
+              </p>
             )}
           </div>
 
           <div>
             <label className="block text-xs font-semibold text-gray-700 mb-1">
-              Email
+              Email UB
             </label>
             <input
               type="email"
@@ -170,7 +209,7 @@ export default function RegisterPage() {
           <button
             type="submit"
             disabled={isSubmitting}
-            className="w-full py-2.5 bg-[#2E5B3C] text-white text-sm font-semibold rounded-xl hover:bg-emerald-800 transition disabled:opacity-50 mt-2"
+            className="w-full py-2.5 bg-[#2E5B3C] text-white text-sm font-semibold rounded-xl hover:bg-emerald-800 transition disabled:opacity-50 mt-2 cursor-pointer"
           >
             {isSubmitting ? "Mendaftarkan..." : "Daftar Sekarang"}
           </button>

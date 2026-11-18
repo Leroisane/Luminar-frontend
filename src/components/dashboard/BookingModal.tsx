@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -9,34 +9,40 @@ import {
   FileText,
   Building2,
   CheckCircle2,
+  Users,
+  Phone,
 } from "lucide-react";
-import { axiosClient } from "../../api/axiosClient";
+import { useQueryClient } from "@tanstack/react-query";
+import { createBookingApi } from "../../api/facilityService";
+import { getApiErrorMessage } from "../../api/axiosClient";
 import { useAuthStore } from "../../store/useAuthStore";
-import { useFacilities } from "../../hooks/useDashboardQueries";
+import {
+  useLembagaOptions,
+  useRoomsList,
+} from "../../hooks/useDashboardQueries";
 import type { BookingStep, Facility } from "../../types";
 import { toISODate } from "../../utils/helpers";
 
 const bookingSchema = z
   .object({
-    facilityId: z.string().optional(),
-    facilityName: z
-      .string()
-      .min(1, "Pilih ruangan atau alat yang ingin dipinjam"),
-    category: z.string().min(1, "Pilih kategori fasilitas"),
-    activityName: z.string().min(4, "Nama kegiatan minimal 4 karakter"),
-    organization: z.string().min(2, "Nama lembaga/kepanitiaan wajib diisi"),
+    room_id: z.string().min(1, "Pilih ruangan yang ingin dipinjam"),
+    lembaga_id: z.string().min(1, "Pilih lembaga / organisasi pengaju"),
+    program_kerja: z.string().min(3, "Nama program kerja wajib diisi"),
+    agenda: z.string().min(4, "Agenda kegiatan minimal 4 karakter"),
     date: z.string().min(1, "Tanggal peminjaman wajib dipilih"),
-    startTime: z.string().min(1, "Jam mulai wajib diisi"),
-    endTime: z.string().min(1, "Jam selesai wajib diisi"),
-    documentUrl: z
+    start_time: z.string().min(1, "Jam mulai wajib diisi"),
+    end_time: z.string().min(1, "Jam selesai wajib diisi"),
+    participants: z.string().min(1, "Jumlah peserta wajib diisi"),
+    purpose: z.string().min(1, "Keperluan wajib dipilih"),
+    pic_phone: z.string().min(8, "Nomor WhatsApp penanggung jawab wajib diisi"),
+    document_url: z
       .string()
       .url("Masukkan tautan Google Drive / PDF yang valid (diawali https://)")
       .or(z.literal("")),
-    notes: z.string().optional(),
   })
-  .refine((data) => data.endTime > data.startTime, {
+  .refine((data) => data.end_time > data.start_time, {
     message: "Jam selesai harus lebih akhir dari jam mulai",
-    path: ["endTime"],
+    path: ["end_time"],
   });
 
 export type BookingFormValues = z.infer<typeof bookingSchema>;
@@ -59,20 +65,12 @@ interface BookingModalProps {
   onSuccess: (newBooking: SubmittedBooking) => void;
 }
 
-const FALLBACK_FACILITIES = [
-  "Lab Komputer Jaringan (G1.4)",
-  "Lab Pemrograman Dasar (G1.2)",
-  "Auditorium Algoritma (G2)",
-  "Ruang Kelas F3.1",
-  "Studio Multimedia FILKOM",
-  "Paket Audio System & Wireless Mic",
-];
-
-const CATEGORIES = [
-  "Ruang Kuliah",
-  "Laboratorium",
-  "Peralatan Multimedia",
-  "Audio System",
+const PURPOSES = [
+  "Kegiatan",
+  "Rapat Koordinasi",
+  "Latihan / Gladi",
+  "Seminar / Workshop",
+  "Lainnya",
 ];
 
 function formatIndoDate(isoDate: string) {
@@ -86,64 +84,6 @@ function formatIndoDate(isoDate: string) {
   });
 }
 
-function buildBookingRecord(
-  data: BookingFormValues,
-  applicantName: string,
-): SubmittedBooking {
-  const now = new Date();
-  const nowTime = now.toLocaleTimeString("id-ID", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-  const todayLabel = now.toLocaleDateString("id-ID", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-
-  return {
-    ticketId: `REQ-${now.getFullYear()}-${now.getTime().toString().slice(-4)}`,
-    status: "Menunggu Verifikasi Admin",
-    submittedAt: `${todayLabel}, ${nowTime} WIB`,
-    activity: `${data.activityName} (${data.organization})`,
-    resources: `${data.facilityName} • ${data.category}`,
-    schedule: `${formatIndoDate(data.date)} • ${data.startTime} – ${data.endTime} WIB`,
-    steps: [
-      {
-        id: 1,
-        title: "Pengajuan Terkirim",
-        state: "done",
-        timestamp: `${todayLabel}, ${nowTime}`,
-        note: `Diajukan oleh ${applicantName}`,
-      },
-      {
-        id: 2,
-        title: "Verifikasi Berkas & Jadwal",
-        state: "current",
-        timestamp: "",
-        note: "Sedang ditinjau Admin Sarpras",
-        description: "Pengecekan ketersediaan ruang & surat izin kegiatan",
-      },
-      {
-        id: 3,
-        title: "Persetujuan Kasubbag Umum",
-        state: "pending",
-        timestamp: "",
-        note: "",
-        description: "Penerbitan surat izin pemakaian fasilitas",
-      },
-      {
-        id: 4,
-        title: "Siap Digunakan (QR Check-in)",
-        state: "pending",
-        timestamp: "",
-        note: "",
-        description: "Tunjukkan QR Code ke petugas gedung saat hari-H",
-      },
-    ],
-  };
-}
-
 export default function BookingModal({
   isOpen,
   onClose,
@@ -151,8 +91,11 @@ export default function BookingModal({
   defaultDate,
   onSuccess,
 }: BookingModalProps) {
+  const queryClient = useQueryClient();
   const user = useAuthStore((state) => state.user);
-  const { data: facilities = [] } = useFacilities();
+  const { data: rooms = [] } = useRoomsList();
+  const { data: lembagaOptions = [] } = useLembagaOptions();
+
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [createdTicket, setCreatedTicket] = useState<SubmittedBooking | null>(
     null,
@@ -162,57 +105,133 @@ export default function BookingModal({
     register,
     handleSubmit,
     reset,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<BookingFormValues>({
     resolver: zodResolver(bookingSchema),
     defaultValues: {
-      facilityId: selectedFacility?.id ? String(selectedFacility.id) : "",
-      facilityName: selectedFacility?.name ?? "",
-      category: selectedFacility?.category ?? "Ruang Kuliah",
-      activityName: "",
-      organization: "",
+      room_id: "",
+      lembaga_id: "",
+      program_kerja: "",
+      agenda: "",
       date: toISODate(defaultDate),
-      startTime: "09:00",
-      endTime: "12:00",
-      documentUrl: "",
-      notes: "",
+      start_time: "09:00",
+      end_time: "12:00",
+      participants: "25",
+      purpose: "Kegiatan",
+      pic_phone: "",
+      document_url: "",
     },
   });
 
-  if (!isOpen) return null;
+  useEffect(() => {
+    setValue("date", toISODate(defaultDate));
+    if (selectedFacility) {
+      const matched = rooms.find(
+        (r) =>
+          r.id === String(selectedFacility.id) ||
+          r.name.toLowerCase() === selectedFacility.name.toLowerCase(),
+      );
+      if (matched) {
+        setValue("room_id", matched.id);
+      }
+    }
+  }, [selectedFacility, defaultDate, rooms, setValue]);
 
-  const facilityNames =
-    facilities.length > 0 ? facilities.map((f) => f.name) : FALLBACK_FACILITIES;
+  if (!isOpen) return null;
 
   const onSubmit = async (data: BookingFormValues) => {
     setSubmitError(null);
-    const formattedBooking = buildBookingRecord(
-      data,
-      user?.name || "Mahasiswa",
-    );
 
     try {
-      await axiosClient.post("/api/v1/bookings", data);
-      localStorage.setItem(
-        "luminar_latest_booking",
-        JSON.stringify(formattedBooking),
+      const res = await createBookingApi({
+        room_id: Number(data.room_id) || data.room_id,
+        lembaga_id: Number(data.lembaga_id) || data.lembaga_id,
+        program_kerja: data.program_kerja.trim(),
+        agenda: data.agenda.trim(),
+        activity_name: data.agenda.trim(),
+        date: data.date,
+        start_time: data.start_time,
+        end_time: data.end_time,
+        participants: Number(data.participants) || 10,
+        purpose: data.purpose,
+        pic_phone: data.pic_phone.trim(),
+        document_url: data.document_url.trim() || undefined,
+      });
+
+      const created = (res?.data || res || {}) as Record<string, unknown>;
+      const chosenRoom = rooms.find((r) => r.id === data.room_id);
+      const chosenLembaga = lembagaOptions.find(
+        (l) => l.id === data.lembaga_id,
       );
+
+      const now = new Date();
+      const nowTime = now.toLocaleTimeString("id-ID", {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      const todayLabel = now.toLocaleDateString("id-ID", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      });
+
+      const formattedBooking: SubmittedBooking = {
+        ticketId: String(
+          created.ticket_code ??
+            created.booking_code ??
+            `REQ-${created.id ?? now.getTime().toString().slice(-4)}`,
+        ),
+        status: "Menunggu Verifikasi Admin",
+        submittedAt: `${todayLabel}, ${nowTime} WIB`,
+        activity: `${data.agenda} (${chosenLembaga?.name ?? data.program_kerja})`,
+        resources:
+          chosenRoom?.name ?? selectedFacility?.name ?? "Ruangan FILKOM",
+        schedule: `${formatIndoDate(data.date)} • ${data.start_time} – ${data.end_time} WIB`,
+        steps: [
+          {
+            id: 1,
+            title: "Pengajuan Terkirim",
+            state: "done",
+            timestamp: `${todayLabel}, ${nowTime}`,
+            note: `Diajukan oleh ${user?.name || "Mahasiswa"}`,
+          },
+          {
+            id: 2,
+            title: "Verifikasi Berkas & Jadwal",
+            state: "current",
+            timestamp: "",
+            note: "Sedang ditinjau Admin Sarpras",
+          },
+          {
+            id: 3,
+            title: "Penerbitan Surat Izin Resmi",
+            state: "pending",
+            timestamp: "",
+            note: "",
+            description: "Terbit setelah disetujui koordinator",
+          },
+          {
+            id: 4,
+            title: "Siap Digunakan",
+            state: "pending",
+            timestamp: "",
+            note: "",
+            description: "Konfirmasi ke petugas loket Gedung G Lt. 1",
+          },
+      ],
+      };
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["my-bookings"] }),
+        queryClient.invalidateQueries({
+          queryKey: ["room-availability-matrix"],
+        }),
+      ]);
+
       setCreatedTicket(formattedBooking);
     } catch (err: unknown) {
-      if (import.meta.env.DEV) {
-        localStorage.setItem(
-          "luminar_latest_booking",
-          JSON.stringify(formattedBooking),
-        );
-        setCreatedTicket(formattedBooking);
-        return;
-      }
-
-      const apiErr = err as { response?: { data?: { message?: string } } };
-      setSubmitError(
-        apiErr?.response?.data?.message ||
-          "Gagal mengirim pengajuan peminjaman. Coba beberapa saat lagi.",
-      );
+      setSubmitError(getApiErrorMessage(err));
     }
   };
 
@@ -244,7 +263,7 @@ export default function BookingModal({
               Formulir Reservasi Sarpras
             </span>
             <h3 className="mt-1.5 text-xl font-extrabold text-slate-900">
-              Ajukan Peminjaman Fasilitas
+              Ajukan Peminjaman Ruangan
             </h3>
             <p className="text-xs text-slate-500">
               Lengkapi detail jadwal dan dokumen pendukung kegiatan akademik
@@ -254,7 +273,7 @@ export default function BookingModal({
             type="button"
             onClick={handleCancel}
             aria-label="Tutup modal"
-            className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+            className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 cursor-pointer"
           >
             <X className="size-5" />
           </button>
@@ -283,7 +302,7 @@ export default function BookingModal({
             <button
               type="button"
               onClick={handleFinish}
-              className="mt-2 rounded-xl bg-brand px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-dark"
+              className="mt-2 rounded-xl bg-brand px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-dark cursor-pointer"
             >
               Lihat Status Peminjaman
             </button>
@@ -296,86 +315,86 @@ export default function BookingModal({
               </div>
             )}
 
-            {/* Fasilitas & Kategori */}
+            {/* Ruangan & Lembaga */}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <label className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-slate-700">
                   <Building2 className="size-3.5 text-brand" />
-                  Ruangan / Alat
+                  Ruangan *
                 </label>
                 <select
-                  {...register("facilityName")}
+                  {...register("room_id")}
                   className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
                 >
-                  <option value="">-- Pilih Fasilitas --</option>
-                  {selectedFacility &&
-                    !facilityNames.includes(selectedFacility.name) && (
-                      <option value={selectedFacility.name}>
-                        {selectedFacility.name}
-                      </option>
-                    )}
-                  {facilityNames.map((name) => (
-                    <option key={name} value={name}>
-                      {name}
+                  <option value="">-- Pilih Ruangan --</option>
+                  {rooms.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.name} {r.building ? `(${r.building})` : ""}
                     </option>
                   ))}
                 </select>
-                {errors.facilityName && (
+                {errors.room_id && (
                   <p className="mt-1 text-xs text-red-600">
-                    {errors.facilityName.message}
+                    {errors.room_id.message}
                   </p>
                 )}
               </div>
 
               <div>
                 <label className="mb-1.5 block text-xs font-semibold text-slate-700">
-                  Kategori Sarpras
+                  Lembaga / Organisasi *
                 </label>
                 <select
-                  {...register("category")}
+                  {...register("lembaga_id")}
                   className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
                 >
-                  {CATEGORIES.map((cat) => (
-                    <option key={cat} value={cat}>
-                      {cat}
+                  <option value="">-- Pilih Lembaga --</option>
+                  {lembagaOptions.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.name}
                     </option>
                   ))}
                 </select>
+                {errors.lembaga_id && (
+                  <p className="mt-1 text-xs text-red-600">
+                    {errors.lembaga_id.message}
+                  </p>
+                )}
               </div>
             </div>
 
-            {/* Nama Kegiatan & Organisasi */}
+            {/* Program Kerja & Agenda */}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <label className="mb-1.5 block text-xs font-semibold text-slate-700">
-                  Nama Kegiatan
+                  Program Kerja *
                 </label>
                 <input
                   type="text"
-                  placeholder="Contoh: Study Jam Web Dev"
-                  {...register("activityName")}
+                  placeholder="Contoh: RAION EXHIBITION 2026"
+                  {...register("program_kerja")}
                   className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
                 />
-                {errors.activityName && (
+                {errors.program_kerja && (
                   <p className="mt-1 text-xs text-red-600">
-                    {errors.activityName.message}
+                    {errors.program_kerja.message}
                   </p>
                 )}
               </div>
 
               <div>
                 <label className="mb-1.5 block text-xs font-semibold text-slate-700">
-                  Organisasi / Kepanitiaan
+                  Agenda Kegiatan *
                 </label>
                 <input
                   type="text"
-                  placeholder="Contoh: BEM FILKOM / GDGoC"
-                  {...register("organization")}
+                  placeholder="Contoh: Gladi Bersih & Technical Meeting"
+                  {...register("agenda")}
                   className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
                 />
-                {errors.organization && (
+                {errors.agenda && (
                   <p className="mt-1 text-xs text-red-600">
-                    {errors.organization.message}
+                    {errors.agenda.message}
                   </p>
                 )}
               </div>
@@ -386,7 +405,7 @@ export default function BookingModal({
               <div>
                 <label className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-slate-700">
                   <Calendar className="size-3.5 text-brand" />
-                  Tanggal
+                  Tanggal *
                 </label>
                 <input
                   type="date"
@@ -403,16 +422,16 @@ export default function BookingModal({
               <div>
                 <label className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-slate-700">
                   <Clock className="size-3.5 text-brand" />
-                  Jam Mulai
+                  Jam Mulai *
                 </label>
                 <input
                   type="time"
-                  {...register("startTime")}
+                  {...register("start_time")}
                   className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
                 />
-                {errors.startTime && (
+                {errors.start_time && (
                   <p className="mt-1 text-xs text-red-600">
-                    {errors.startTime.message}
+                    {errors.start_time.message}
                   </p>
                 )}
               </div>
@@ -420,16 +439,71 @@ export default function BookingModal({
               <div>
                 <label className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-slate-700">
                   <Clock className="size-3.5 text-brand" />
-                  Jam Selesai
+                  Jam Selesai *
                 </label>
                 <input
                   type="time"
-                  {...register("endTime")}
+                  {...register("end_time")}
                   className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
                 />
-                {errors.endTime && (
+                {errors.end_time && (
                   <p className="mt-1 text-xs text-red-600">
-                    {errors.endTime.message}
+                    {errors.end_time.message}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Peserta, Keperluan, Kontak */}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div>
+                <label className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-slate-700">
+                  <Users className="size-3.5 text-brand" />
+                  Jumlah Peserta *
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  {...register("participants")}
+                  className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+                />
+                {errors.participants && (
+                  <p className="mt-1 text-xs text-red-600">
+                    {errors.participants.message}
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold text-slate-700">
+                  Keperluan *
+                </label>
+                <select
+                  {...register("purpose")}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+                >
+                  {PURPOSES.map((p) => (
+                    <option key={p} value={p}>
+                      {p}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-slate-700">
+                  <Phone className="size-3.5 text-brand" />
+                  No. WhatsApp PIC *
+                </label>
+                <input
+                  type="tel"
+                  placeholder="0812xxxxxxxx"
+                  {...register("pic_phone")}
+                  className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+                />
+                {errors.pic_phone && (
+                  <p className="mt-1 text-xs text-red-600">
+                    {errors.pic_phone.message}
                   </p>
                 )}
               </div>
@@ -444,27 +518,14 @@ export default function BookingModal({
               <input
                 type="url"
                 placeholder="https://drive.google.com/file/d/..."
-                {...register("documentUrl")}
+                {...register("document_url")}
                 className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
               />
-              {errors.documentUrl && (
+              {errors.document_url && (
                 <p className="mt-1 text-xs text-red-600">
-                  {errors.documentUrl.message}
+                  {errors.document_url.message}
                 </p>
               )}
-            </div>
-
-            {/* Catatan Tambahan */}
-            <div>
-              <label className="mb-1.5 block text-xs font-semibold text-slate-700">
-                Kebutuhan Tambahan (Opsional)
-              </label>
-              <textarea
-                rows={2}
-                placeholder="Contoh: Butuh akses AC dan 2 mikrofon wireless"
-                {...register("notes")}
-                className="w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
-              />
             </div>
 
             {/* Action Buttons */}
@@ -472,14 +533,14 @@ export default function BookingModal({
               <button
                 type="button"
                 onClick={handleCancel}
-                className="rounded-xl border border-line px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
+                className="rounded-xl border border-line px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-50 cursor-pointer"
               >
                 Batal
               </button>
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="rounded-xl bg-brand px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-dark disabled:opacity-50"
+                className="rounded-xl bg-brand px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-dark disabled:opacity-50 cursor-pointer"
               >
                 {isSubmitting ? "Mengirim..." : "Kirim Pengajuan"}
               </button>

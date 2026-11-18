@@ -1,55 +1,102 @@
 import { create } from "zustand";
+import { getProfileApi, logoutApi } from "../api/authService";
 
 export interface AuthUser {
-  id?: string;
+  id?: string | number;
   name: string;
-  nim?: string;
   email: string;
-  role: string;
+  role: "mahasiswa" | "admin" | string;
+  nim?: string;
+  phone?: string;
 }
 
 interface AuthState {
   user: AuthUser | null;
   token: string | null;
-  isAuthenticated: boolean;
-  setAuth: (user: AuthUser, token: string) => void;
-  logout: () => void;
-  clearAuth: () => void;
+  refreshToken: string | null;
+  isLoadingProfile: boolean;
+  setAuth: (
+    user: AuthUser,
+    accessToken: string,
+    refreshToken?: string | null,
+  ) => void;
+  syncProfile: () => Promise<AuthUser | null>;
+  logout: () => Promise<void>;
 }
 
-function getStoredUser(): AuthUser | null {
+const getStoredUser = (): AuthUser | null => {
   try {
-    const raw = localStorage.getItem("auth_user");
-    if (!raw) return null;
-    return JSON.parse(raw) as AuthUser;
+    const raw = localStorage.getItem("luminar_user");
+    return raw ? (JSON.parse(raw) as AuthUser) : null;
   } catch {
-    localStorage.removeItem("auth_user");
     return null;
   }
-}
+};
 
-export const useAuthStore = create<AuthState>((set) => {
-  const initialToken = localStorage.getItem("access_token");
-  const initialUser = getStoredUser();
+export const useAuthStore = create<AuthState>((set) => ({
+  user: getStoredUser(),
+  token: localStorage.getItem("access_token"),
+  refreshToken: localStorage.getItem("refresh_token"),
+  isLoadingProfile: false,
 
-  const handleClear = () => {
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("auth_user");
-    set({ user: null, token: null, isAuthenticated: false });
-  };
+  setAuth: (user, accessToken, refreshToken = null) => {
+    localStorage.setItem("access_token", accessToken);
+    localStorage.setItem("luminar_user", JSON.stringify(user));
+    if (refreshToken) {
+      localStorage.setItem("refresh_token", refreshToken);
+    }
+    set((state) => ({
+      user,
+      token: accessToken,
+      refreshToken: refreshToken ?? state.refreshToken,
+    }));
+  },
 
-  return {
-    user: initialUser,
-    token: initialToken,
-    isAuthenticated: Boolean(initialToken && initialUser),
+  syncProfile: async () => {
+    const accessToken = localStorage.getItem("access_token");
+    if (!accessToken) {
+      set({ user: null, token: null, refreshToken: null });
+      return null;
+    }
 
-    setAuth: (user, token) => {
-      localStorage.setItem("access_token", token);
-      localStorage.setItem("auth_user", JSON.stringify(user));
-      set({ user, token, isAuthenticated: true });
-    },
+    // Lewati pemanggilan API jika sedang memakai sesi demo staging lokal
+    if (accessToken.startsWith("dev-token-")) {
+      return getStoredUser();
+    }
 
-    logout: handleClear,
-    clearAuth: handleClear,
-  };
-});
+    set({ isLoadingProfile: true });
+    try {
+      const res = await getProfileApi();
+      // Backend membungkus respons sukses dalam { message, data }
+      const profile: AuthUser = res?.data || res;
+      localStorage.setItem("luminar_user", JSON.stringify(profile));
+      set({ user: profile, token: accessToken, isLoadingProfile: false });
+      return profile;
+    } catch {
+      localStorage.removeItem("access_token");
+      localStorage.removeItem("refresh_token");
+      localStorage.removeItem("luminar_user");
+      set({
+        user: null,
+        token: null,
+        refreshToken: null,
+        isLoadingProfile: false,
+      });
+      return null;
+    }
+  },
+
+  logout: async () => {
+    const accessToken = localStorage.getItem("access_token");
+    try {
+      if (accessToken && !accessToken.startsWith("dev-token-")) {
+        await logoutApi();
+      }
+    } finally {
+      localStorage.removeItem("access_token");
+      localStorage.removeItem("refresh_token");
+      localStorage.removeItem("luminar_user");
+      set({ user: null, token: null, refreshToken: null });
+    }
+  },
+}));
