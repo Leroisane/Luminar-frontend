@@ -70,7 +70,6 @@ export default function StatusSection({
     try {
       await updateRevisionBookingApi(revisionTarget.id, {
         agenda: revAgenda.trim() || revisionTarget.agenda,
-        activity_name: revAgenda.trim() || revisionTarget.activity,
         document_url: revDocUrl.trim() || revisionTarget.documentUrl,
       });
       await resubmitBookingApi(revisionTarget.id);

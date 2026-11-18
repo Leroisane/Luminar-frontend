@@ -78,13 +78,14 @@ export default function ScheduleSection({ selectedDate, onSelectDate }: Props) {
   const { data: timeConfig } = useTimeSlotsConfig();
 
   const dateISO = toISODate(selectedDate);
+  const timeConfigObj = timeConfig as Record<string, string> | undefined;
   const timeRows = useMemo(
     () =>
       generateHourlySlots(
-        timeConfig?.dayStart ?? "07:00",
-        timeConfig?.dayEnd ?? "20:00",
+        timeConfigObj?.dayStart ?? "07:00",
+        timeConfigObj?.dayEnd ?? "20:00",
       ),
-    [timeConfig],
+    [timeConfigObj],
   );
 
   const visibleRooms = useMemo(() => {
@@ -105,7 +106,7 @@ export default function ScheduleSection({ selectedDate, onSelectDate }: Props) {
         visibleRooms.slice(0, 12).map(async (room) => {
           try {
             const res = await getRoomAvailabilityApi(room.id, dateISO);
-            const data = (res?.data || res || {}) as Record<string, unknown>;
+            const data = ((res?.data || res || {}) as unknown) as Record<string, unknown>;
             const booked = Array.isArray(data.booked_slots)
               ? data.booked_slots
               : Array.isArray(data.bookings)

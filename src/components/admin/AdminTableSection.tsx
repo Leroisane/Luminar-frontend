@@ -129,7 +129,7 @@ export default function AdminTableSection({ globalSearch }: Props) {
         await uploadFinalLetterApi(selectedReq.backendId, finalFile);
       } else {
         await updateBookingStatusApi(selectedReq.backendId, {
-          status: nextAction,
+          status: nextAction as import("../../types/api").BookingStatus,
           note: actionNote.trim() || undefined,
           reason: actionNote.trim() || undefined,
         });

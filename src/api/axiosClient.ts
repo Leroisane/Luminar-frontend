@@ -1,4 +1,5 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from "axios";
+import type { ApiResponse } from "../types/api";
 
 // Contoh VITE_API_BASE_URL: http://localhost:8080/api/v1 atau https://xxxx.ngrok-free.app/api/v1
 export const API_BASE_URL =
@@ -46,7 +47,6 @@ axiosClient.interceptors.response.use(
       _retry?: boolean;
     };
 
-    // Tangani 401 dengan mencoba refresh token terlebih dahulu
     if (
       error.response?.status === 401 &&
       originalRequest &&
@@ -112,7 +112,7 @@ axiosClient.interceptors.response.use(
   },
 );
 
-// Helper ekstrak pesan dari response.ErrorEnvelope ({ error: "..." })
+// Helper ekstrak pesan error dari response backend
 export function getApiErrorMessage(err: unknown): string {
   const axiosErr = err as AxiosError<{ error?: string; message?: string }>;
   const status = axiosErr?.response?.status;
@@ -124,6 +124,24 @@ export function getApiErrorMessage(err: unknown): string {
   if (status === 404) return "Data tidak ditemukan (404).";
   if (status === 429) return "Terlalu banyak permintaan. Tunggu sebentar.";
   return "Gagal terhubung ke server Luminar.";
+}
+
+// Generic wrapper – mengembalikan { data, error } alih-alih throw
+export async function apiRequest<T>(
+  fn: () => Promise<{ data: ApiResponse<T> | T }>
+): Promise<{ data: T | null; error: string | null }> {
+  try {
+    const res = await fn();
+    // Handle both wrapped { data: { data: T } } and unwrapped { data: T }
+    const payload = (res as { data: ApiResponse<T> }).data;
+    const result =
+      payload && typeof payload === "object" && "data" in payload
+        ? (payload as ApiResponse<T>).data
+        : (payload as T);
+    return { data: result, error: null };
+  } catch (e) {
+    return { data: null, error: getApiErrorMessage(e) };
+  }
 }
 
 // Helper unduh Excel (.xlsx) dari endpoint .../export
@@ -141,7 +159,7 @@ export async function downloadExcelExport(
   const match = disposition?.match(/filename="?([^"]+)"?/);
   const filename = match?.[1] || fallbackFilename;
 
-  const url = window.URL.createObjectURL(new Blob([res.data]));
+  const url = window.URL.createObjectURL(new Blob([res.data as BlobPart]));
   const link = document.createElement("a");
   link.href = url;
   link.setAttribute("download", filename);

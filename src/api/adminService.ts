@@ -1,33 +1,66 @@
 import axiosClient, { downloadExcelExport } from "./axiosClient";
+import type {
+  ApiResponse,
+  Booking,
+  Room,
+  Item,
+  Lembaga,
+  AuditLog,
+  Paginated,
+  BookingStatus,
+  DashboardStats,
+} from "../types/api";
 
 // --- Booking & Workflow Admin ---
-export const getAdminBookingStatsApi = async () => {
-  const res = await axiosClient.get("/admin/room-bookings/stats");
+
+export const getAdminBookingStatsApi = async (): Promise<
+  ApiResponse<DashboardStats>
+> => {
+  const res =
+    await axiosClient.get<ApiResponse<DashboardStats>>(
+      "/admin/room-bookings/stats",
+    );
   return res.data;
 };
 
-export const getAdminBookingsApi = async (params?: Record<string, unknown>) => {
-  const res = await axiosClient.get("/admin/room-bookings", { params });
+export const getAdminBookingsApi = async (
+  params?: Record<string, unknown>,
+): Promise<ApiResponse<Paginated<Booking>>> => {
+  const res = await axiosClient.get<ApiResponse<Paginated<Booking>>>(
+    "/admin/room-bookings",
+    { params },
+  );
   return res.data;
 };
 
-export const getAdminBookingDetailApi = async (id: string | number) => {
-  const res = await axiosClient.get(`/admin/room-bookings/${id}`);
+export const getAdminBookingDetailApi = async (
+  id: string | number,
+): Promise<ApiResponse<Booking>> => {
+  const res = await axiosClient.get<ApiResponse<Booking>>(
+    `/admin/room-bookings/${id}`,
+  );
   return res.data;
 };
 
-export const getLetterDraftApi = async (id: string | number) => {
-  const res = await axiosClient.get(`/admin/room-bookings/${id}/letter-draft`, {
-    responseType: "blob",
-  });
+export const getLetterDraftApi = async (id: string | number): Promise<Blob> => {
+  const res = await axiosClient.get<Blob>(
+    `/admin/room-bookings/${id}/letter-draft`,
+    { responseType: "blob" },
+  );
   return res.data;
 };
+
+export interface UpdateBookingStatusPayload {
+  status: BookingStatus;
+  note?: string;
+  reason?: string;
+}
 
 export const updateBookingStatusApi = async (
   id: string | number,
-  payload: { status: string; note?: string; reason?: string },
-) => {
-  const res = await axiosClient.post(
+  payload: UpdateBookingStatusPayload,
+): Promise<ApiResponse<Booking>> => {
+  const res = await axiosClient.post<ApiResponse<Booking>>(
     `/admin/room-bookings/${id}/status`,
     payload,
   );
@@ -38,33 +71,49 @@ export const uploadFinalLetterApi = async (
   id: string | number,
   file: File,
   fieldName = "file",
-) => {
+  onProgress?: (percent: number) => void,
+): Promise<ApiResponse<Booking>> => {
   const formData = new FormData();
   formData.append(fieldName, file);
-  const res = await axiosClient.post(
+  const res = await axiosClient.post<ApiResponse<Booking>>(
     `/admin/room-bookings/${id}/final-letter`,
     formData,
-    { headers: { "Content-Type": "multipart/form-data" } },
+    {
+      headers: { "Content-Type": "multipart/form-data" },
+      onUploadProgress: (evt) => {
+        if (onProgress && evt.total) {
+          onProgress(Math.round((evt.loaded * 100) / evt.total));
+        }
+      },
+    },
   );
   return res.data;
 };
 
 export const createManualBookingApi = async (
   payload: Record<string, unknown>,
-) => {
-  const res = await axiosClient.post("/admin/room-bookings", payload);
+): Promise<ApiResponse<Booking>> => {
+  const res = await axiosClient.post<ApiResponse<Booking>>(
+    "/admin/room-bookings",
+    payload,
+  );
   return res.data;
 };
 
 export const updateAdminBookingApi = async (
   id: string | number,
   payload: Record<string, unknown>,
-) => {
-  const res = await axiosClient.put(`/admin/room-bookings/${id}`, payload);
+): Promise<ApiResponse<Booking>> => {
+  const res = await axiosClient.put<ApiResponse<Booking>>(
+    `/admin/room-bookings/${id}`,
+    payload,
+  );
   return res.data;
 };
 
-export const exportAdminBookingsExcelApi = (params?: Record<string, unknown>) =>
+export const exportAdminBookingsExcelApi = (
+  params?: Record<string, unknown>,
+) =>
   downloadExcelExport(
     "/admin/room-bookings/export",
     params,
@@ -72,98 +121,185 @@ export const exportAdminBookingsExcelApi = (params?: Record<string, unknown>) =>
   );
 
 // --- Master Rooms Admin ---
-export const getAdminRoomsApi = async (params?: Record<string, unknown>) => {
-  const res = await axiosClient.get("/admin/rooms", { params });
+
+export interface RoomPayload {
+  name: string;
+  building: string;
+  capacity: number;
+  description?: string;
+  status?: "tersedia" | "rusak" | "nonaktif";
+  status_note?: string;
+}
+
+export const getAdminRoomsApi = async (
+  params?: Record<string, unknown>,
+): Promise<ApiResponse<Paginated<Room>>> => {
+  const res = await axiosClient.get<ApiResponse<Paginated<Room>>>(
+    "/admin/rooms",
+    { params },
+  );
   return res.data;
 };
 
-export const createAdminRoomApi = async (payload: Record<string, unknown>) => {
-  const res = await axiosClient.post("/admin/rooms", payload);
+export const createAdminRoomApi = async (
+  payload: RoomPayload,
+): Promise<ApiResponse<Room>> => {
+  const res = await axiosClient.post<ApiResponse<Room>>(
+    "/admin/rooms",
+    payload,
+  );
   return res.data;
 };
 
 export const updateAdminRoomApi = async (
   id: string | number,
-  payload: Record<string, unknown>,
-) => {
-  const res = await axiosClient.put(`/admin/rooms/${id}`, payload);
+  payload: Partial<RoomPayload>,
+): Promise<ApiResponse<Room>> => {
+  const res = await axiosClient.put<ApiResponse<Room>>(
+    `/admin/rooms/${id}`,
+    payload,
+  );
   return res.data;
 };
 
 export const patchAdminRoomStatusApi = async (
   id: string | number,
   status: "tersedia" | "rusak" | "nonaktif",
-) => {
-  const res = await axiosClient.patch(`/admin/rooms/${id}/status`, { status });
+): Promise<ApiResponse<Room>> => {
+  const res = await axiosClient.patch<ApiResponse<Room>>(
+    `/admin/rooms/${id}/status`,
+    { status },
+  );
   return res.data;
 };
 
-export const deleteAdminRoomApi = async (id: string | number) => {
-  const res = await axiosClient.delete(`/admin/rooms/${id}`);
+export const deleteAdminRoomApi = async (
+  id: string | number,
+): Promise<ApiResponse<null>> => {
+  const res = await axiosClient.delete<ApiResponse<null>>(
+    `/admin/rooms/${id}`,
+  );
   return res.data;
 };
 
 // --- Master Items Admin ---
-export const getAdminItemsApi = async (params?: Record<string, unknown>) => {
-  const res = await axiosClient.get("/admin/items", { params });
+
+export interface ItemPayload {
+  name: string;
+  category?: string;
+  description?: string;
+  stock_total: number;
+  status?: "tersedia" | "rusak" | "nonaktif";
+  status_note?: string;
+}
+
+export const getAdminItemsApi = async (
+  params?: Record<string, unknown>,
+): Promise<ApiResponse<Paginated<Item>>> => {
+  const res = await axiosClient.get<ApiResponse<Paginated<Item>>>(
+    "/admin/items",
+    { params },
+  );
   return res.data;
 };
 
-export const createAdminItemApi = async (payload: Record<string, unknown>) => {
-  const res = await axiosClient.post("/admin/items", payload);
+export const createAdminItemApi = async (
+  payload: ItemPayload,
+): Promise<ApiResponse<Item>> => {
+  const res = await axiosClient.post<ApiResponse<Item>>(
+    "/admin/items",
+    payload,
+  );
   return res.data;
 };
 
 export const updateAdminItemApi = async (
   id: string | number,
-  payload: Record<string, unknown>,
-) => {
-  const res = await axiosClient.put(`/admin/items/${id}`, payload);
+  payload: Partial<ItemPayload>,
+): Promise<ApiResponse<Item>> => {
+  const res = await axiosClient.put<ApiResponse<Item>>(
+    `/admin/items/${id}`,
+    payload,
+  );
   return res.data;
 };
 
 export const patchAdminItemStatusApi = async (
   id: string | number,
   status: "tersedia" | "rusak" | "nonaktif",
-) => {
-  const res = await axiosClient.patch(`/admin/items/${id}/status`, { status });
+): Promise<ApiResponse<Item>> => {
+  const res = await axiosClient.patch<ApiResponse<Item>>(
+    `/admin/items/${id}/status`,
+    { status },
+  );
   return res.data;
 };
 
-export const deleteAdminItemApi = async (id: string | number) => {
-  const res = await axiosClient.delete(`/admin/items/${id}`);
+export const deleteAdminItemApi = async (
+  id: string | number,
+): Promise<ApiResponse<null>> => {
+  const res = await axiosClient.delete<ApiResponse<null>>(
+    `/admin/items/${id}`,
+  );
   return res.data;
 };
 
 // --- Master Lembaga Admin ---
-export const getAdminLembagaApi = async (params?: Record<string, unknown>) => {
-  const res = await axiosClient.get("/admin/lembaga", { params });
+
+export interface LembagaPayload {
+  name: string;
+  is_active?: boolean;
+}
+
+export const getAdminLembagaApi = async (
+  params?: Record<string, unknown>,
+): Promise<ApiResponse<Paginated<Lembaga>>> => {
+  const res = await axiosClient.get<ApiResponse<Paginated<Lembaga>>>(
+    "/admin/lembaga",
+    { params },
+  );
   return res.data;
 };
 
 export const createAdminLembagaApi = async (
-  payload: Record<string, unknown>,
-) => {
-  const res = await axiosClient.post("/admin/lembaga", payload);
+  payload: LembagaPayload,
+): Promise<ApiResponse<Lembaga>> => {
+  const res = await axiosClient.post<ApiResponse<Lembaga>>(
+    "/admin/lembaga",
+    payload,
+  );
   return res.data;
 };
 
 export const updateAdminLembagaApi = async (
   id: string | number,
-  payload: Record<string, unknown>,
-) => {
-  const res = await axiosClient.put(`/admin/lembaga/${id}`, payload);
+  payload: Partial<LembagaPayload>,
+): Promise<ApiResponse<Lembaga>> => {
+  const res = await axiosClient.put<ApiResponse<Lembaga>>(
+    `/admin/lembaga/${id}`,
+    payload,
+  );
   return res.data;
 };
 
-export const deleteAdminLembagaApi = async (id: string | number) => {
-  const res = await axiosClient.delete(`/admin/lembaga/${id}`);
+export const deleteAdminLembagaApi = async (
+  id: string | number,
+): Promise<ApiResponse<null>> => {
+  const res = await axiosClient.delete<ApiResponse<null>>(
+    `/admin/lembaga/${id}`,
+  );
   return res.data;
 };
 
 // --- Audit Logs & Reports ---
-export const getAuditLogsApi = async (params?: Record<string, unknown>) => {
-  const res = await axiosClient.get("/admin/audit-logs", { params });
+
+export const getAuditLogsApi = async (
+  params?: Record<string, unknown>,
+): Promise<ApiResponse<Paginated<AuditLog>>> => {
+  const res = await axiosClient.get<ApiResponse<Paginated<AuditLog>>>(
+    "/admin/audit-logs",
+    { params },
+  );
   return res.data;
 };
 
@@ -176,10 +312,11 @@ export const exportAuditLogsExcelApi = (params?: Record<string, unknown>) =>
 
 export const getBookingSummaryReportApi = async (
   params?: Record<string, unknown>,
-) => {
-  const res = await axiosClient.get("/admin/reports/room-bookings/summary", {
-    params,
-  });
+): Promise<ApiResponse<Record<string, unknown>>> => {
+  const res = await axiosClient.get<ApiResponse<Record<string, unknown>>>(
+    "/admin/reports/room-bookings/summary",
+    { params },
+  );
   return res.data;
 };
 

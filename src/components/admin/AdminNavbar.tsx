@@ -84,14 +84,14 @@ export default function AdminNavbar({ pendingCount, search, onSearch }: Props) {
         String(rm.status ?? "tersedia").toLowerCase() === "tersedia"
           ? "Tersedia"
           : String(rm.status ?? "Tersedia"),
-      pic: String(rm.building ?? rm.location ?? "Sarpras FILKOM"),
+      pic: String(rm.building ?? "Sarpras FILKOM"),
     })),
     ...(itemsData?.items ?? []).map((it, idx) => ({
       key: `item-${String(it.id ?? idx)}`,
       name: String(it.name ?? "Inventaris FILKOM"),
-      category: `Peralatan • Stok ${it.stock ?? it.quantity ?? 1}`,
-      status: Number(it.stock ?? it.quantity ?? 1) > 0 ? "Tersedia" : "Habis",
-      pic: String(it.location ?? "Loket Sarpras Gd. G Lt. 1"),
+      category: `Peralatan • Stok ${it.stock_available ?? it.stock_total ?? 1}`,
+      status: Number(it.stock_available ?? it.stock_total ?? 1) > 0 ? "Tersedia" : "Habis",
+      pic: String(it.description ?? "Loket Sarpras Gd. G Lt. 1"),
     })),
   ];
 

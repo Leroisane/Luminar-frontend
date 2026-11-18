@@ -2,15 +2,19 @@ import { useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuthStore } from "../store/useAuthStore";
 import { getProfileApi } from "../api/authService";
+import LoadingSpinner from "./ui/LoadingSpinner";
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
   allowedRole?: "admin" | "mahasiswa";
+  /** Override redirect target. Default: /login untuk unauth, role-based untuk wrong role */
+  redirectTo?: string;
 }
 
 export default function ProtectedRoute({
   children,
   allowedRole,
+  redirectTo,
 }: ProtectedRouteProps) {
   const { token, user, setAuth, logout } = useAuthStore();
   const [isChecking, setIsChecking] = useState(true);
@@ -24,7 +28,6 @@ export default function ProtectedRoute({
         return;
       }
 
-      // Validasi objek user yang sudah ada di store / localStorage
       if (user) {
         if (
           typeof user === "object" &&
@@ -34,59 +37,51 @@ export default function ProtectedRoute({
           if (isMounted) setIsChecking(false);
           return;
         }
-        // Data user korup atau tidak punya role -> bersihkan sesi
-        logout();
+        await logout();
         if (isMounted) setIsChecking(false);
         return;
       }
 
-      // Jika memakai token dev lokal tetapi data auth_user hilang -> paksa login ulang
       if (token.startsWith("dev-token-")) {
-        logout();
+        await logout();
         if (isMounted) setIsChecking(false);
         return;
       }
 
-      // Verifikasi token asli ke backend saat user belum ada di store
       try {
         const res = await getProfileApi();
-        const profileData = res?.data || res;
-
+        const profileData = res?.data ?? (res as unknown as typeof res.data);
         if (
+          profileData &&
           typeof profileData === "object" &&
-          profileData !== null &&
           typeof profileData.role === "string" &&
           profileData.role.trim() !== ""
         ) {
           setAuth(profileData, token);
         } else {
-          logout();
+          await logout();
         }
       } catch {
-        logout();
+        await logout();
       } finally {
         if (isMounted) setIsChecking(false);
       }
     };
 
-    verifyUser();
-
-    return () => {
-      isMounted = false;
-    };
+    void verifyUser();
+    return () => { isMounted = false; };
   }, [token, user, setAuth, logout]);
 
   if (isChecking) {
     return (
-      <div className="min-h-screen bg-[#F8F9FA] flex items-center justify-center text-sm text-gray-500">
-        Memverifikasi sesi akun...
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <LoadingSpinner size="lg" label="Memverifikasi sesi akun..." />
       </div>
     );
   }
 
-  // 1. Belum login -> paksa ke /login
   if (!token) {
-    return <Navigate to="/login" replace />;
+    return <Navigate to={redirectTo ?? "/login"} replace />;
   }
 
   const userRole =
@@ -94,14 +89,17 @@ export default function ProtectedRoute({
       ? user.role.toLowerCase().trim()
       : undefined;
 
-  // 2. Role kosong/tidak valid -> jangan pernah loloskan ke halaman terproteksi
   if (!userRole) {
-    return <Navigate to="/login" replace />;
+    return <Navigate to={redirectTo ?? "/login"} replace />;
   }
 
-  // 3. Role tidak cocok dengan rute yang diketik di URL -> kembalikan ke dashboard aslinya
   if (allowedRole && userRole !== allowedRole) {
-    return <Navigate to={userRole === "admin" ? "/admin" : "/"} replace />;
+    return (
+      <Navigate
+        to={redirectTo ?? (userRole === "admin" ? "/admin" : "/")}
+        replace
+      />
+    );
   }
 
   return <>{children}</>;

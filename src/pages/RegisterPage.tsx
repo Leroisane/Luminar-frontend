@@ -55,6 +55,7 @@ export default function RegisterPage() {
         nim: data.nim.trim(),
         email: data.email.trim(),
         password: data.password,
+        confirm_password: data.confirmPassword,
       });
       navigate("/login", { replace: true, state: { registered: true } });
     } catch (err: unknown) {

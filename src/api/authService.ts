@@ -1,4 +1,5 @@
 import axiosClient from "./axiosClient";
+import type { ApiResponse, AuthUser, LoginResponseData } from "../types/api";
 
 export interface LoginPayload {
   email: string;
@@ -9,28 +10,41 @@ export interface RegisterPayload {
   name: string;
   email: string;
   password: string;
+  confirm_password?: string;
   nim?: string;
   phone?: string;
 }
 
-export const loginApi = async (payload: LoginPayload) => {
-  const res = await axiosClient.post("/auth/login", payload);
+export const loginApi = async (
+  payload: LoginPayload,
+): Promise<ApiResponse<LoginResponseData>> => {
+  const res = await axiosClient.post<ApiResponse<LoginResponseData>>(
+    "/auth/login",
+    payload,
+  );
   return res.data;
 };
 
-export const registerApi = async (payload: RegisterPayload) => {
-  const res = await axiosClient.post("/auth/register", payload);
+export const registerApi = async (
+  payload: RegisterPayload,
+): Promise<ApiResponse<{ user: AuthUser }>> => {
+  const res = await axiosClient.post<ApiResponse<{ user: AuthUser }>>(
+    "/auth/register",
+    payload,
+  );
   return res.data;
 };
 
-export const refreshTokenApi = async (refreshToken: string) => {
-  const res = await axiosClient.post("/auth/refresh", {
-    refresh_token: refreshToken,
-  });
+export const refreshTokenApi = async (
+  refreshToken: string,
+): Promise<ApiResponse<{ access_token: string; refresh_token?: string }>> => {
+  const res = await axiosClient.post<
+    ApiResponse<{ access_token: string; refresh_token?: string }>
+  >("/auth/refresh", { refresh_token: refreshToken });
   return res.data;
 };
 
-export const logoutApi = async () => {
+export const logoutApi = async (): Promise<void> => {
   try {
     await axiosClient.post("/auth/logout");
   } finally {
@@ -39,12 +53,14 @@ export const logoutApi = async () => {
   }
 };
 
-export const getProfileApi = async () => {
-  const res = await axiosClient.get("/auth/me");
+export const getProfileApi = async (): Promise<ApiResponse<AuthUser>> => {
+  const res = await axiosClient.get<ApiResponse<AuthUser>>("/auth/me");
   return res.data;
 };
 
-export const updateProfileApi = async (payload: Record<string, unknown>) => {
-  const res = await axiosClient.put("/profile", payload);
+export const updateProfileApi = async (
+  payload: Partial<Pick<AuthUser, "name" | "phone">>,
+): Promise<ApiResponse<AuthUser>> => {
+  const res = await axiosClient.put<ApiResponse<AuthUser>>("/profile", payload);
   return res.data;
 };

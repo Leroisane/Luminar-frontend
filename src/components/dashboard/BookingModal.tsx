@@ -159,7 +159,7 @@ export default function BookingModal({
         document_url: data.document_url.trim() || undefined,
       });
 
-      const created = (res?.data || res || {}) as Record<string, unknown>;
+      const created = ((res?.data || res || {}) as unknown) as Record<string, unknown>;
       const chosenRoom = rooms.find((r) => r.id === data.room_id);
       const chosenLembaga = lembagaOptions.find(
         (l) => l.id === data.lembaga_id,

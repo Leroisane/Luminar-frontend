@@ -35,28 +35,28 @@ export default function LoginPage() {
     setErrorMsg(null);
     try {
       const res = await loginApi(data);
-      const accessToken =
-        res?.data?.access_token ||
-        res?.data?.token ||
-        res?.access_token ||
-        res?.token;
-      const refreshToken =
-        res?.data?.refresh_token || res?.refresh_token || null;
+      // Backend wraps in { message, data: { token, refresh_token, user } }
+      const payload = res?.data;
+      const accessToken = payload?.token;
+      const refreshToken = payload?.refresh_token ?? null;
 
       if (!accessToken) {
         throw new Error("Access token tidak ditemukan pada respons server");
       }
 
-      // Simpan token sementara agar interceptor Axios menyisipkan Bearer token ke /auth/me
       localStorage.setItem("access_token", accessToken);
       if (refreshToken) {
         localStorage.setItem("refresh_token", refreshToken);
       }
 
-      let userData = res?.data?.user || res?.user;
+      let userData = payload?.user;
       if (!userData) {
         const profileRes = await getProfileApi();
-        userData = profileRes?.data || profileRes;
+        userData = profileRes?.data;
+      }
+
+      if (!userData) {
+        throw new Error("Data user tidak ditemukan");
       }
 
       setAuth(userData, accessToken, refreshToken);
@@ -106,9 +106,7 @@ export default function LoginPage() {
               className="w-full px-3.5 py-2.5 text-sm border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2E5B3C]/20 focus:border-[#2E5B3C]"
             />
             {errors.email && (
-              <p className="text-xs text-red-600 mt-1">
-                {errors.email.message}
-              </p>
+              <p className="text-xs text-red-600 mt-1">{errors.email.message}</p>
             )}
           </div>
 
@@ -123,9 +121,7 @@ export default function LoginPage() {
               className="w-full px-3.5 py-2.5 text-sm border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2E5B3C]/20 focus:border-[#2E5B3C]"
             />
             {errors.password && (
-              <p className="text-xs text-red-600 mt-1">
-                {errors.password.message}
-              </p>
+              <p className="text-xs text-red-600 mt-1">{errors.password.message}</p>
             )}
           </div>
 
@@ -159,6 +155,7 @@ export default function LoginPage() {
                 onClick={() => {
                   setAuth(
                     {
+                      id: "demo-mhs-1",
                       name: "Muhammad Ihsan Fadillah",
                       email: "muhamadihsan2005@gmail.com",
                       role: "mahasiswa",
@@ -176,6 +173,7 @@ export default function LoginPage() {
                 onClick={() => {
                   setAuth(
                     {
+                      id: "demo-admin-1",
                       name: "Admin Sarpras",
                       email: "admin@ub.ac.id",
                       role: "admin",

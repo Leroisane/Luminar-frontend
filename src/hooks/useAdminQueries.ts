@@ -2,141 +2,57 @@ import { useQuery } from "@tanstack/react-query";
 import {
   getAdminBookingStatsApi,
   getAdminBookingsApi,
+  getAdminBookingDetailApi,
+  getAdminRoomsApi,
   getAdminItemsApi,
   getAdminLembagaApi,
-  getAdminRoomsApi,
   getAuditLogsApi,
   getBookingSummaryReportApi,
 } from "../api/adminService";
 import type {
-  AvatarTone,
-  BookingRequest,
-  CalendarEvent,
-  EventKind,
-  RequestCategory,
-  RoomCategory,
-} from "../types/admin";
+  Booking,
+  Room,
+  Item,
+  Lembaga,
+  AuditLog,
+  Paginated,
+  DashboardStats,
+} from "../types/api";
 
-export interface AdminBookingStats {
-  total: number;
-  pending: number;
-  review: number;
-  waitingSignature: number;
-  needsRevision: number;
-  approved: number;
-  rejected: number;
-}
-
-export interface ExtendedAdminBooking extends BookingRequest {
-  backendId: string | number;
-  ticketCode: string;
-  rawStatus: string;
-  programStudy?: string;
-  contact?: string;
-  participants?: number;
-  purpose?: string;
-  agenda?: string;
-  programKerja?: string;
-  revisionHistory?: string;
-  rejectionReason?: string;
-  documentUrl?: string;
-  finalLetterUrl?: string;
-}
-
-const tones: AvatarTone[] = ["blue", "green", "violet", "amber"];
-
-function getInitials(name: string): string {
-  return name
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((n) => n[0]?.toUpperCase() ?? "")
-    .join("");
-}
-
-function mapCategory(roomName: string): RequestCategory {
-  const lower = roomName.toLowerCase();
-  if (lower.includes("auditorium")) return "Auditorium";
-  if (lower.includes("lab")) return "Laboratorium";
-  if (
-    lower.includes("kamera") ||
-    lower.includes("audio") ||
-    lower.includes("alat")
-  )
-    return "Peralatan Multimedia";
-  return "Ruang Kelas";
-}
-
-function mapRoomToCalendarMeta(roomName: string): {
-  category: RoomCategory;
-  kind: EventKind;
-} {
-  const lower = roomName.toLowerCase();
-  if (lower.includes("auditorium")) {
-    return { category: "Auditorium", kind: "auditorium" };
-  }
-  if (lower.includes("lab")) {
-    return { category: "Lab Komputer", kind: "class" };
-  }
-  if (
-    lower.includes("studio") ||
-    lower.includes("multimedia") ||
-    lower.includes("podcast") ||
-    lower.includes("kamera") ||
-    lower.includes("audio")
-  ) {
-    return { category: "Studio & Multimedia", kind: "studio" };
-  }
-  return { category: "Ruang Kelas", kind: "class" };
-}
-
-function extractPaginated(res: unknown): {
-  items: Record<string, unknown>[];
-  total: number;
-} {
-  const root = res as Record<string, unknown>;
-  const data = (root?.data ?? root) as Record<string, unknown>;
-  if (Array.isArray(data)) {
-    return {
-      items: data as Record<string, unknown>[],
-      total: Number(root?.total ?? data.length),
-    };
-  }
-  const items = Array.isArray(data?.items)
-    ? (data.items as Record<string, unknown>[])
-    : Array.isArray(data?.data)
-      ? (data.data as Record<string, unknown>[])
-      : [];
-  const total = Number(data?.total ?? root?.total ?? items.length);
-  return { items, total };
-}
-
+// Admin stats
 export function useAdminBookingStats() {
-  return useQuery<AdminBookingStats>({
+  return useQuery<DashboardStats>({
     queryKey: ["admin", "booking-stats"],
     queryFn: async () => {
       const res = await getAdminBookingStatsApi();
-      const s = (res?.data || res || {}) as Record<string, unknown>;
+      const raw = res.data as DashboardStats & Record<string, unknown>;
+      // Normalize: map backend fields → camelCase aliases used by UI components
       return {
-        total: Number(s.total ?? s.total_bookings ?? 0),
-        pending: Number(s.pending ?? s.perlu_diulas ?? 0),
-        review: Number(s.review ?? s.sedang_direview ?? 0),
-        waitingSignature: Number(s.waiting_signature ?? s.menunggu_ttd ?? 0),
-        needsRevision: Number(s.perlu_revisi ?? s.revision_requested ?? 0),
-        approved: Number(s.approved ?? s.disetujui ?? 0),
-        rejected: Number(s.rejected ?? s.ditolak ?? 0),
-      };
+        ...raw,
+        total: Number(raw.total ?? raw.total_bookings ?? 0),
+        pending: Number(raw.pending ?? raw.pending_bookings ?? 0),
+        review: Number(raw.review ?? raw.review_bookings ?? 0),
+        waitingSignature: Number(raw.waitingSignature ?? raw.waiting_signature ?? 0),
+        needsRevision: Number(raw.needsRevision ?? raw.needs_revision ?? 0),
+        approved: Number(raw.approved ?? raw.approved_bookings ?? 0),
+        rejected: Number(raw.rejected ?? raw.rejected_bookings ?? 0),
+        total_bookings: Number(raw.total_bookings ?? raw.total ?? 0),
+        pending_bookings: Number(raw.pending_bookings ?? raw.pending ?? 0),
+        approved_bookings: Number(raw.approved_bookings ?? raw.approved ?? 0),
+        active_facilities: Number(raw.active_facilities ?? 0),
+      } satisfies DashboardStats;
     },
   });
 }
 
+// Admin bookings list (paginated + filter)
 export function useAdminBookingsPaginated(params: {
   page: number;
   per_page: number;
   status?: string;
   q?: string;
 }) {
-  return useQuery({
+  return useQuery<Paginated<ExtendedAdminBooking>>({
     queryKey: ["admin", "bookings", params],
     queryFn: async () => {
       const queryParams: Record<string, unknown> = {
@@ -149,77 +65,172 @@ export function useAdminBookingsPaginated(params: {
       if (params.q?.trim()) {
         queryParams.q = params.q.trim();
       }
-
       const res = await getAdminBookingsApi(queryParams);
-      const { items, total } = extractPaginated(res);
-
-      const mapped: ExtendedAdminBooking[] = items.map((r, idx) => {
-        const userObj = r.user as Record<string, unknown> | undefined;
-        const roomObj = r.room as Record<string, unknown> | undefined;
-        const lembagaObj = r.lembaga as Record<string, unknown> | undefined;
-
-        const name = String(
-          userObj?.name ??
-            r.applicant_name ??
-            r.user_name ??
-            "Mahasiswa FILKOM",
-        );
-        const roomName = String(
-          roomObj?.name ?? r.room_name ?? "Ruangan FILKOM",
-        );
-        const dateStr = String(r.date ?? r.booking_date ?? "").slice(0, 10);
-        const startTime = String(r.start_time ?? "08:00");
-        const endTime = String(r.end_time ?? "10:00");
-        const backendId = (r.id as string | number) ?? idx;
-        const ticketCode = String(
-          r.ticket_code ?? r.booking_code ?? r.code ?? `RR-${backendId}`,
-        );
-
+      const data = res.data;
+      const items = (data?.items ?? []).map((r, idx): ExtendedAdminBooking => {
+        const name = r.user?.name ?? "Mahasiswa FILKOM";
+        const roomName = r.room?.name ?? "Ruangan FILKOM";
         return {
-          id: String(backendId),
-          backendId,
-          ticketCode,
-          rawStatus: String(r.status ?? "pending"),
-          initials: getInitials(name) || "MF",
+          ...r,
+          backendId: r.id,
+          ticketCode: r.ticket_code,
+          rawStatus: r.status,
+          initials: getInitials(name),
           tone: tones[idx % tones.length],
           name,
-          identifier: String(userObj?.nim ?? r.nim ?? r.identifier ?? "-"),
-          org: String(lembagaObj?.name ?? r.lembaga_name ?? "-"),
+          identifier: r.user?.nim ?? "-",
+          org: r.lembaga?.name ?? "-",
           room: roomName,
-          roomMeta: String(
-            roomObj?.building ?? r.purpose ?? "Kegiatan Akademik",
-          ),
-          category: mapCategory(roomName),
-          date: dateStr,
-          time: `${startTime} - ${endTime}`,
-          programStudy: String(
-            userObj?.prodi ?? r.program_studi ?? "Fakultas Ilmu Komputer",
-          ),
-          contact: String(userObj?.phone ?? r.contact ?? r.pic_phone ?? "-"),
-          participants: Number(r.participants ?? r.participant_count ?? 0),
-          purpose: String(r.purpose ?? "Kegiatan"),
-          agenda: String(r.agenda ?? r.activity_name ?? "-"),
-          programKerja: String(r.program_kerja ?? "-"),
-          revisionHistory: r.revision_note
-            ? String(r.revision_note)
-            : undefined,
-          rejectionReason: r.rejection_reason
-            ? String(r.rejection_reason)
-            : undefined,
-          documentUrl: r.document_url ? String(r.document_url) : undefined,
-          finalLetterUrl: r.final_letter_url
-            ? String(r.final_letter_url)
-            : undefined,
-          doc: {
-            name: String(r.document_name ?? "Dokumen_Pengajuan.pdf"),
-            kind: "pdf",
-          },
+          roomMeta: r.room?.building ?? r.purpose ?? "Kegiatan Akademik",
+          category: mapRoomToCalendarMeta(roomName).category ?? "Ruang Kelas",
+          date: (r.date ?? "").slice(0, 10),
+          time: `${r.start_time ?? "08:00"} - ${r.end_time ?? "10:00"}`,
+          programStudy: "Fakultas Ilmu Komputer",
+          contact: r.user?.phone ?? "-",
+          participants: r.participants ?? 0,
+          purpose: r.purpose ?? "Kegiatan",
+          agenda: r.agenda ?? "-",
+          programKerja: r.program_kerja ?? "-",
+          revisionHistory: r.revision_note,
+          rejectionReason: r.rejection_reason,
+          documentUrl: r.document_url,
+          finalLetterUrl: r.final_letter_url,
+          doc: { name: "Dokumen_Pengajuan.pdf", kind: "pdf" },
         };
       });
-
-      return { items: mapped, total };
+      return {
+        items,
+        total: data?.total ?? items.length,
+        page: data?.page ?? params.page,
+        per_page: data?.per_page ?? params.per_page,
+      };
     },
   });
+}
+
+// Single booking detail for admin
+export function useAdminBookingDetail(id: string | number | undefined) {
+  return useQuery<Booking>({
+    queryKey: ["admin", "booking-detail", id],
+    queryFn: async () => {
+      const res = await getAdminBookingDetailApi(id!);
+      return res.data;
+    },
+    enabled: !!id,
+  });
+}
+
+// Master rooms (admin)
+export function useAdminMasterRooms(page = 1, perPage = 20) {
+  return useQuery<Paginated<Room>>({
+    queryKey: ["admin", "rooms", page, perPage],
+    queryFn: async () => {
+      const res = await getAdminRoomsApi({ page, per_page: perPage });
+      return res.data;
+    },
+  });
+}
+
+// Master items (admin)
+export function useAdminMasterItems(page = 1, perPage = 20) {
+  return useQuery<Paginated<Item>>({
+    queryKey: ["admin", "items", page, perPage],
+    queryFn: async () => {
+      const res = await getAdminItemsApi({ page, per_page: perPage });
+      return res.data;
+    },
+  });
+}
+
+// Master lembaga (admin)
+export function useAdminMasterLembaga(page = 1, perPage = 50) {
+  return useQuery<Paginated<Lembaga>>({
+    queryKey: ["admin", "lembaga", page, perPage],
+    queryFn: async () => {
+      const res = await getAdminLembagaApi({ page, per_page: perPage });
+      return res.data;
+    },
+  });
+}
+
+// Audit logs
+export function useAdminAuditLogs(params: {
+  page: number;
+  per_page: number;
+  q?: string;
+}) {
+  return useQuery<Paginated<AuditLog>>({
+    queryKey: ["admin", "audit-logs", params],
+    queryFn: async () => {
+      const res = await getAuditLogsApi(params);
+      return res.data;
+    },
+  });
+}
+
+// Summary report
+export function useAdminSummaryReport() {
+  return useQuery<Record<string, unknown>>({
+    queryKey: ["admin", "summary-report"],
+    queryFn: async () => {
+      const res = await getBookingSummaryReportApi();
+      return res.data;
+    },
+  });
+}
+
+// ===================== BACKWARD COMPAT =====================
+// AdminCalendar and AdminTableSection use these; kept to avoid full rewrites.
+
+import type { CalendarEvent } from "../types/admin";
+
+export type ExtendedAdminBooking = Omit<Booking, "room"> & {
+  backendId: string | number;
+  ticketCode: string;
+  rawStatus: string;
+  initials: string;
+  tone: string;
+  name: string;
+  identifier: string;
+  org: string;
+  room: string;
+  roomMeta: string;
+  category: string;
+  date: string;
+  time: string;
+  programStudy: string;
+  contact: string;
+  participants: number;
+  purpose: string;
+  agenda: string;
+  programKerja: string;
+  revisionHistory?: string;
+  rejectionReason?: string;
+  documentUrl?: string;
+  finalLetterUrl?: string;
+  doc: { name: string; kind: "pdf" | "memo" };
+};
+
+function getInitials(name: string): string {
+  return name
+    .split(" ")
+    .slice(0, 2)
+    .map((w) => w[0] ?? "")
+    .join("")
+    .toUpperCase();
+}
+
+const tones = ["blue", "green", "violet", "amber"] as const;
+
+function mapRoomToCalendarMeta(roomName: string): {
+  category: CalendarEvent["category"];
+  kind: CalendarEvent["kind"];
+} {
+  const lower = roomName.toLowerCase();
+  if (lower.includes("auditorium")) return { category: "Auditorium", kind: "auditorium" };
+  if (lower.includes("lab")) return { category: "Lab Komputer", kind: "class" };
+  if (lower.includes("studio") || lower.includes("multimedia")) return { category: "Studio & Multimedia", kind: "studio" };
+  return { category: "Ruang Kelas", kind: "class" };
 }
 
 export function useCalendarEvents(startDate?: string, endDate?: string) {
@@ -229,28 +240,17 @@ export function useCalendarEvents(startDate?: string, endDate?: string) {
       const params: Record<string, unknown> = { page: 1, per_page: 200 };
       if (startDate) params.date_from = startDate;
       if (endDate) params.date_to = endDate;
-
       const res = await getAdminBookingsApi(params);
-      const { items } = extractPaginated(res);
-
+      const items = res.data?.items ?? [];
       return items
-        .filter((r) => {
-          const status = String(r.status ?? "").toLowerCase();
-          return !status.includes("reject") && !status.includes("cancel");
-        })
+        .filter((r) => !["rejected", "cancelled"].includes(r.status))
         .map((r, idx) => {
-          const roomObj = r.room as Record<string, unknown> | undefined;
-          const roomName = String(
-            roomObj?.name ?? r.room_name ?? "Ruangan FILKOM",
-          );
-          const dateStr = String(r.date ?? r.booking_date ?? "").slice(0, 10);
-          const startTime = String(r.start_time ?? "08:00").slice(0, 5);
-          const endTime = String(r.end_time ?? "10:00").slice(0, 5);
-          const activity = String(
-            r.agenda ?? r.activity_name ?? r.program_kerja ?? "Kegiatan",
-          );
+          const roomName = r.room?.name ?? "Ruangan FILKOM";
+          const dateStr = (r.date ?? "").slice(0, 10);
+          const startTime = (r.start_time ?? "08:00").slice(0, 5);
+          const endTime = (r.end_time ?? "10:00").slice(0, 5);
+          const activity = r.agenda ?? r.program_kerja ?? r.purpose ?? "Kegiatan";
           const { category, kind } = mapRoomToCalendarMeta(roomName);
-
           return {
             id: String(r.id ?? idx),
             title: `${roomName} – ${activity}`,
@@ -268,51 +268,37 @@ export function useAdminRequests() {
   const query = useAdminBookingsPaginated({ page: 1, per_page: 50 });
   return {
     ...query,
-    data: query.data?.items ?? [],
+    data: (query.data?.items ?? []).map((r, idx): ExtendedAdminBooking => {
+      const name = r.user?.name ?? "Mahasiswa FILKOM";
+      const roomObj = (typeof r.room === "object" ? r.room : null) as Room | null;
+      const roomName = (typeof r.room === "string" ? r.room : roomObj?.name) ?? "Ruangan FILKOM";
+      return {
+        ...r,
+        backendId: r.id,
+        ticketCode: r.ticket_code,
+        rawStatus: r.status,
+        initials: getInitials(name),
+        tone: tones[idx % tones.length],
+        name,
+        identifier: r.user?.nim ?? "-",
+        org: r.lembaga?.name ?? "-",
+        room: roomName,
+        roomMeta: roomObj?.building ?? r.purpose ?? "Kegiatan Akademik",
+        category: mapRoomToCalendarMeta(roomName).category ?? "Ruang Kelas",
+        date: (r.date ?? "").slice(0, 10),
+        time: `${r.start_time ?? "08:00"} - ${r.end_time ?? "10:00"}`,
+        programStudy: "Fakultas Ilmu Komputer",
+        contact: r.user?.phone ?? "-",
+        participants: r.participants ?? 0,
+        purpose: r.purpose ?? "Kegiatan",
+        agenda: r.agenda ?? "-",
+        programKerja: r.program_kerja ?? "-",
+        revisionHistory: r.revision_note,
+        rejectionReason: r.rejection_reason,
+        documentUrl: r.document_url,
+        finalLetterUrl: r.final_letter_url,
+        doc: { name: "Dokumen_Pengajuan.pdf", kind: "pdf" },
+      };
+    }),
   };
-}
-
-export function useAdminMasterRooms(page = 1, perPage = 20) {
-  return useQuery({
-    queryKey: ["admin", "rooms", page, perPage],
-    queryFn: async () =>
-      extractPaginated(await getAdminRoomsApi({ page, per_page: perPage })),
-  });
-}
-
-export function useAdminMasterItems(page = 1, perPage = 20) {
-  return useQuery({
-    queryKey: ["admin", "items", page, perPage],
-    queryFn: async () =>
-      extractPaginated(await getAdminItemsApi({ page, per_page: perPage })),
-  });
-}
-
-export function useAdminMasterLembaga(page = 1, perPage = 50) {
-  return useQuery({
-    queryKey: ["admin", "lembaga", page, perPage],
-    queryFn: async () =>
-      extractPaginated(await getAdminLembagaApi({ page, per_page: perPage })),
-  });
-}
-
-export function useAdminAuditLogs(params: {
-  page: number;
-  per_page: number;
-  q?: string;
-}) {
-  return useQuery({
-    queryKey: ["admin", "audit-logs", params],
-    queryFn: async () => extractPaginated(await getAuditLogsApi(params)),
-  });
-}
-
-export function useAdminSummaryReport() {
-  return useQuery({
-    queryKey: ["admin", "summary-report"],
-    queryFn: async () => {
-      const res = await getBookingSummaryReportApi();
-      return (res?.data || res || {}) as Record<string, unknown>;
-    },
-  });
 }

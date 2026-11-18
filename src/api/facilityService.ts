@@ -1,42 +1,68 @@
 import axiosClient, { SERVER_ROOT_URL } from "./axiosClient";
+import type {
+  ApiResponse,
+  Room,
+  RoomSlot,
+  Item,
+  Lembaga,
+  Booking,
+  Paginated,
+} from "../types/api";
 
 // --- Katalog Ruang, Barang, Lembaga & Slot Waktu ---
-export const getRoomsApi = async (params?: Record<string, unknown>) => {
-  const res = await axiosClient.get("/rooms", { params });
+
+export const getRoomsApi = async (
+  params?: Record<string, unknown>,
+): Promise<ApiResponse<Room[] | Paginated<Room>>> => {
+  const res = await axiosClient.get<ApiResponse<Room[] | Paginated<Room>>>(
+    "/rooms",
+    { params },
+  );
   return res.data;
 };
 
-export const getRoomDetailApi = async (id: string | number) => {
-  const res = await axiosClient.get(`/rooms/${id}`);
+export const getRoomDetailApi = async (
+  id: string | number,
+): Promise<ApiResponse<Room>> => {
+  const res = await axiosClient.get<ApiResponse<Room>>(`/rooms/${id}`);
   return res.data;
 };
 
 export const getRoomAvailabilityApi = async (
   id: string | number,
   date: string, // format YYYY-MM-DD
-) => {
-  const res = await axiosClient.get(`/rooms/${id}/availability`, {
-    params: { date },
-  });
+): Promise<ApiResponse<RoomSlot[]>> => {
+  const res = await axiosClient.get<ApiResponse<RoomSlot[]>>(
+    `/rooms/${id}/availability`,
+    { params: { date } },
+  );
   return res.data;
 };
 
-export const getItemsApi = async (params?: { q?: string; status?: string }) => {
-  const res = await axiosClient.get("/items", { params });
+export const getItemsApi = async (params?: {
+  q?: string;
+  status?: string;
+}): Promise<ApiResponse<Item[] | Paginated<Item>>> => {
+  const res = await axiosClient.get<ApiResponse<Item[] | Paginated<Item>>>(
+    "/items",
+    { params },
+  );
   return res.data;
 };
 
-export const getItemDetailApi = async (id: string | number) => {
-  const res = await axiosClient.get(`/items/${id}`);
+export const getItemDetailApi = async (
+  id: string | number,
+): Promise<ApiResponse<Item>> => {
+  const res = await axiosClient.get<ApiResponse<Item>>(`/items/${id}`);
   return res.data;
 };
 
-export const getLembagaApi = async () => {
-  const res = await axiosClient.get("/lembaga");
+export const getLembagaApi = async (): Promise<ApiResponse<Lembaga[]>> => {
+  const res = await axiosClient.get<ApiResponse<Lembaga[]>>("/lembaga");
   return res.data;
 };
 
-export const getTimeSlotsConfigApi = async () => {
+export const getTimeSlotsConfigApi = async (): Promise<unknown> => {
   const res = await axiosClient.get("/time-slots", {
     baseURL: SERVER_ROOT_URL,
   });
@@ -44,35 +70,77 @@ export const getTimeSlotsConfigApi = async () => {
 };
 
 // --- Pengajuan & Riwayat Peminjaman Mahasiswa ---
-export const createBookingApi = async (payload: Record<string, unknown>) => {
-  const res = await axiosClient.post("/room-bookings", payload);
+
+export interface CreateBookingPayload {
+  room_id: string | number;
+  lembaga_id: string | number;
+  date: string; // YYYY-MM-DD
+  start_time: string; // HH:MM
+  end_time: string; // HH:MM
+  purpose: string;
+  agenda?: string;
+  activity_name?: string;
+  program_kerja?: string;
+  participants?: number;
+  document_url?: string;
+  pic_phone?: string;
+  items?: Array<{ item_id: string | number; quantity: number }>;
+}
+
+export const createBookingApi = async (
+  payload: CreateBookingPayload,
+): Promise<ApiResponse<Booking>> => {
+  const res = await axiosClient.post<ApiResponse<Booking>>(
+    "/room-bookings",
+    payload,
+  );
   return res.data;
 };
 
-export const getMyBookingsApi = async (params?: { status?: string }) => {
-  const res = await axiosClient.get("/room-bookings/me", { params });
+export const getMyBookingsApi = async (params?: {
+  status?: string;
+}): Promise<ApiResponse<Booking[]>> => {
+  const res = await axiosClient.get<ApiResponse<Booking[]>>(
+    "/room-bookings/me",
+    { params },
+  );
   return res.data;
 };
 
-export const getBookingDetailApi = async (id: string | number) => {
-  const res = await axiosClient.get(`/room-bookings/${id}`);
+export const getBookingDetailApi = async (
+  id: string | number,
+): Promise<ApiResponse<Booking>> => {
+  const res = await axiosClient.get<ApiResponse<Booking>>(
+    `/room-bookings/${id}`,
+  );
   return res.data;
 };
 
 export const updateRevisionBookingApi = async (
   id: string | number,
-  payload: Record<string, unknown>,
-) => {
-  const res = await axiosClient.put(`/room-bookings/${id}`, payload);
+  payload: Partial<CreateBookingPayload>,
+): Promise<ApiResponse<Booking>> => {
+  const res = await axiosClient.put<ApiResponse<Booking>>(
+    `/room-bookings/${id}`,
+    payload,
+  );
   return res.data;
 };
 
-export const resubmitBookingApi = async (id: string | number) => {
-  const res = await axiosClient.post(`/room-bookings/${id}/resubmit`);
+export const resubmitBookingApi = async (
+  id: string | number,
+): Promise<ApiResponse<Booking>> => {
+  const res = await axiosClient.post<ApiResponse<Booking>>(
+    `/room-bookings/${id}/resubmit`,
+  );
   return res.data;
 };
 
-export const cancelBookingApi = async (id: string | number) => {
-  const res = await axiosClient.post(`/room-bookings/${id}/cancel`);
+export const cancelBookingApi = async (
+  id: string | number,
+): Promise<ApiResponse<Booking>> => {
+  const res = await axiosClient.post<ApiResponse<Booking>>(
+    `/room-bookings/${id}/cancel`,
+  );
   return res.data;
 };
