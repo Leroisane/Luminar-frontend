@@ -132,9 +132,16 @@ export function getApiErrorMessage(err: unknown): string {
 
   const serverErr = data?.error || data?.message;
   if (serverErr) return serverErr;
+  if (status === 401) return "Email atau password salah.";
   if (status === 403) return "Akses ditolak (Forbidden).";
   if (status === 404) return "Endpoint tidak ditemukan (404). Periksa konfigurasi API.";
   if (status === 429) return "Terlalu banyak permintaan. Tunggu sebentar.";
+
+  // Handle client-side errors thrown before/after request
+  if (err instanceof Error && err.message && !axiosErr?.response) {
+    return err.message;
+  }
+
   return "Gagal terhubung ke server Luminar.";
 }
 

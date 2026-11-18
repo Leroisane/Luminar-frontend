@@ -37,7 +37,7 @@ export default function LoginPage() {
       const res = await loginApi(data);
       // Backend wraps in { message, data: { token, refresh_token, user } }
       const payload = res?.data;
-      const accessToken = payload?.token;
+      const accessToken = payload?.access_token || payload?.token;
       const refreshToken = payload?.refresh_token ?? null;
 
       if (!accessToken) {
