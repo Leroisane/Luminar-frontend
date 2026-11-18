@@ -13,10 +13,11 @@ import ConfirmDialog from "../components/ui/ConfirmDialog";
 import StatusBadge from "../components/ui/StatusBadge";
 import type { Room } from "../types/api";
 import type { RoomPayload } from "../api/adminService";
+import { getApiErrorMessage } from "../api/axiosClient";
 
 const emptyForm: RoomPayload = {
   name: "",
-  building: "",
+  location: "",       // backend field is "location"
   capacity: 1,
   description: "",
   status: "tersedia",
@@ -50,7 +51,7 @@ export default function AdminRoomsPage() {
       setForm(emptyForm);
       setEditId(null);
     } catch (err) {
-      setMutError(String(err));
+      setMutError(getApiErrorMessage(err));
     }
   };
 
@@ -58,10 +59,10 @@ export default function AdminRoomsPage() {
     setEditId(room.id);
     setForm({
       name: room.name,
-      building: room.building,
+      location: room.location ?? "",   // backend field
       capacity: room.capacity,
       description: room.description ?? "",
-      status: room.status,
+      status: (room.status as RoomPayload["status"]) ?? "tersedia",
     });
     setShowForm(true);
   };
@@ -92,14 +93,14 @@ export default function AdminRoomsPage() {
           <h2 className="col-span-2 font-semibold text-gray-800">
             {editId ? "Edit Ruangan" : "Tambah Ruangan Baru"}
           </h2>
-          <AlertMessage message={mutError} />
+          {mutError && <AlertMessage message={mutError} className="col-span-2" />}
           <label className="flex flex-col gap-1">
             <span className="text-xs font-medium text-gray-600">Nama Ruangan</span>
             <input className="border border-gray-300 rounded-lg px-3 py-2 text-sm" value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} required />
           </label>
           <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-gray-600">Gedung</span>
-            <input className="border border-gray-300 rounded-lg px-3 py-2 text-sm" value={form.building} onChange={(e) => setForm((p) => ({ ...p, building: e.target.value }))} required />
+            <span className="text-xs font-medium text-gray-600">Lokasi / Gedung</span>
+            <input className="border border-gray-300 rounded-lg px-3 py-2 text-sm" value={form.location} onChange={(e) => setForm((p) => ({ ...p, location: e.target.value }))} placeholder="cth: Gedung GKM Lantai 3" required />
           </label>
           <label className="flex flex-col gap-1">
             <span className="text-xs font-medium text-gray-600">Kapasitas</span>
@@ -109,7 +110,7 @@ export default function AdminRoomsPage() {
             <span className="text-xs font-medium text-gray-600">Status</span>
             <select className="border border-gray-300 rounded-lg px-3 py-2 text-sm" value={form.status} onChange={(e) => setForm((p) => ({ ...p, status: e.target.value as RoomPayload["status"] }))}>
               <option value="tersedia">Tersedia</option>
-              <option value="rusak">Rusak</option>
+              <option value="renovasi">Renovasi</option>
               <option value="nonaktif">Nonaktif</option>
             </select>
           </label>
@@ -131,35 +132,36 @@ export default function AdminRoomsPage() {
           <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
             <tr>
               <th className="px-4 py-3 text-left">Nama</th>
-              <th className="px-4 py-3 text-left">Gedung</th>
+              <th className="px-4 py-3 text-left">Lokasi</th>
               <th className="px-4 py-3 text-center">Kapasitas</th>
               <th className="px-4 py-3 text-left">Status</th>
               <th className="px-4 py-3 text-right">Aksi</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
+            {rooms.length === 0 && (
+              <tr><td colSpan={5} className="text-center py-8 text-gray-400">Belum ada data ruangan.</td></tr>
+            )}
             {rooms.map((room) => (
-              <tr key={room.id}>
+              <tr key={room.id} className="hover:bg-gray-50">
                 <td className="px-4 py-3 font-medium text-gray-900">{room.name}</td>
-                <td className="px-4 py-3 text-gray-600">{room.building}</td>
-                <td className="px-4 py-3 text-center">{room.capacity}</td>
-                <td className="px-4 py-3"><StatusBadge status={room.status} /></td>
-                <td className="px-4 py-3 text-right">
-                  <div className="flex justify-end gap-2">
-                    <button onClick={() => openEdit(room)} className="text-xs text-indigo-600 hover:underline">Edit</button>
-                    <button
-                      onClick={() =>
-                        void statusMutation.mutateAsync({
-                          id: room.id,
-                          status: room.status === "tersedia" ? "nonaktif" : "tersedia",
-                        })
-                      }
-                      className="text-xs text-yellow-600 hover:underline"
-                    >
-                      {room.status === "tersedia" ? "Nonaktifkan" : "Aktifkan"}
-                    </button>
-                    <button onClick={() => setDeleteTarget(room)} className="text-xs text-red-600 hover:underline">Hapus</button>
-                  </div>
+                <td className="px-4 py-3 text-gray-600">{room.location ?? "-"}</td>
+                <td className="px-4 py-3 text-center text-gray-600">{room.capacity}</td>
+                <td className="px-4 py-3">
+                  <StatusBadge status={room.status} />
+                </td>
+                <td className="px-4 py-3 text-right flex gap-2 justify-end">
+                  <button onClick={() => openEdit(room)} className="px-3 py-1 text-xs bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100">Edit</button>
+                  <button
+                    onClick={() => {
+                      const next = room.status === "tersedia" ? "nonaktif" : "tersedia";
+                      statusMutation.mutate({ id: room.id, status: next });
+                    }}
+                    className="px-3 py-1 text-xs bg-yellow-50 text-yellow-700 rounded-lg hover:bg-yellow-100"
+                  >
+                    {room.status === "tersedia" ? "Nonaktifkan" : "Aktifkan"}
+                  </button>
+                  <button onClick={() => setDeleteTarget(room)} className="px-3 py-1 text-xs bg-red-50 text-red-700 rounded-lg hover:bg-red-100">Hapus</button>
                 </td>
               </tr>
             ))}
@@ -167,20 +169,24 @@ export default function AdminRoomsPage() {
         </table>
       </div>
 
-      <PaginationBar page={page} perPage={15} total={total} onPageChange={setPage} />
+      <PaginationBar
+        page={page}
+        total={total}
+        perPage={15}
+        onPageChange={setPage}
+        className="mt-4"
+      />
 
       <ConfirmDialog
         open={!!deleteTarget}
-        title="Hapus Ruangan?"
-        message={`Ruangan "${deleteTarget?.name}" akan dihapus permanen.`}
-        confirmLabel="Ya, Hapus"
-        danger
-        isLoading={deleteMutation.isPending}
-        onConfirm={() =>
-          void deleteMutation
-            .mutateAsync(deleteTarget!.id)
-            .finally(() => setDeleteTarget(null))
-        }
+        title="Hapus Ruangan"
+        message={`Yakin ingin menghapus ruangan "${deleteTarget?.name}"?`}
+        onConfirm={async () => {
+          if (deleteTarget) {
+            await deleteMutation.mutateAsync(deleteTarget.id);
+            setDeleteTarget(null);
+          }
+        }}
         onCancel={() => setDeleteTarget(null)}
       />
     </div>

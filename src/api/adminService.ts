@@ -7,7 +7,6 @@ import type {
   Lembaga,
   AuditLog,
   Paginated,
-  BookingStatus,
   DashboardStats,
 } from "../types/api";
 
@@ -50,10 +49,10 @@ export const getLetterDraftApi = async (id: string | number): Promise<Blob> => {
   return res.data;
 };
 
+// Backend expects: { action: "review"|"request_revision"|"approve"|"reject"|"cancel", note?: string }
 export interface UpdateBookingStatusPayload {
-  status: BookingStatus;
+  action: "review" | "request_revision" | "approve" | "reject" | "cancel";
   note?: string;
-  reason?: string;
 }
 
 export const updateBookingStatusApi = async (
@@ -121,13 +120,15 @@ export const exportAdminBookingsExcelApi = (
   );
 
 // --- Master Rooms Admin ---
+// Backend DTO: { name, location, capacity, description?, status?, status_note? }
+// Status valid values: "tersedia" | "renovasi" | "nonaktif"
 
 export interface RoomPayload {
   name: string;
-  building: string;
+  location: string;       // was "building" — backend uses "location"
   capacity: number;
   description?: string;
-  status?: "tersedia" | "rusak" | "nonaktif";
+  status?: "tersedia" | "renovasi" | "nonaktif";  // "rusak" is NOT valid — use "renovasi"
   status_note?: string;
 }
 
@@ -164,11 +165,12 @@ export const updateAdminRoomApi = async (
 
 export const patchAdminRoomStatusApi = async (
   id: string | number,
-  status: "tersedia" | "rusak" | "nonaktif",
+  status: "tersedia" | "renovasi" | "nonaktif",
+  status_note?: string,
 ): Promise<ApiResponse<Room>> => {
   const res = await axiosClient.patch<ApiResponse<Room>>(
     `/admin/rooms/${id}/status`,
-    { status },
+    { status, status_note },
   );
   return res.data;
 };
@@ -183,10 +185,13 @@ export const deleteAdminRoomApi = async (
 };
 
 // --- Master Items Admin ---
+// NOTE: Backend routes for /admin/items are not yet registered in main.go.
+// These functions are correct and ready — backend just needs the routes added.
+// Backend DTO: { name (required), category (required), description?, stock_total (required), status?, status_note? }
 
 export interface ItemPayload {
   name: string;
-  category?: string;
+  category: string;        // required by backend binding:"required"
   description?: string;
   stock_total: number;
   status?: "tersedia" | "rusak" | "nonaktif";
@@ -227,10 +232,11 @@ export const updateAdminItemApi = async (
 export const patchAdminItemStatusApi = async (
   id: string | number,
   status: "tersedia" | "rusak" | "nonaktif",
+  status_note?: string,
 ): Promise<ApiResponse<Item>> => {
   const res = await axiosClient.patch<ApiResponse<Item>>(
     `/admin/items/${id}/status`,
-    { status },
+    { status, status_note },
   );
   return res.data;
 };
@@ -245,6 +251,8 @@ export const deleteAdminItemApi = async (
 };
 
 // --- Master Lembaga Admin ---
+// Backend DTO Create: { name } only — is_active not accepted on create
+// Backend DTO Update: { name, is_active? }
 
 export interface LembagaPayload {
   name: string;
@@ -264,9 +272,10 @@ export const getAdminLembagaApi = async (
 export const createAdminLembagaApi = async (
   payload: LembagaPayload,
 ): Promise<ApiResponse<Lembaga>> => {
+  // Backend only accepts "name" on create
   const res = await axiosClient.post<ApiResponse<Lembaga>>(
     "/admin/lembaga",
-    payload,
+    { name: payload.name },
   );
   return res.data;
 };

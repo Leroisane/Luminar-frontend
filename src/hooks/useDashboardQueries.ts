@@ -122,11 +122,11 @@ export function useMyBookingsList(status?: string) {
       const arr = Array.isArray(payload) ? payload : [];
       return arr.map((b): BackendBookingItem => ({
         id: b.id,
-        ticketId: b.ticket_code,
+        ticketId: b.booking_no ?? b.ticket_code ?? b.id,
         rawStatus: b.status,
         status: b.status,
         lembagaName: b.lembaga?.name ?? "-",
-        schedule: `${b.date} ${b.start_time}–${b.end_time}`,
+        schedule: `${b.booking_date ?? b.date} ${b.start_time}–${b.end_time}`,
         resources: b.room?.name ?? "-",
         activity: b.agenda ?? b.purpose ?? "-",
         agenda: b.agenda,

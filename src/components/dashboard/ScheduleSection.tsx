@@ -182,18 +182,17 @@ export default function ScheduleSection({ selectedDate, onSelectDate }: Props) {
 
     try {
       await createBookingApi({
-        room_id: Number(quickSlot.roomId) || quickSlot.roomId,
-        lembaga_id: Number(lembagaId) || lembagaId,
+        room_id: String(quickSlot.roomId),
+        lembaga_id: String(lembagaId),
         program_kerja: programKerja.trim(),
         agenda: agenda.trim(),
-        activity_name: agenda.trim(),
-        date: dateISO,
+        booking_date: dateISO,
         start_time: quickSlot.timeStart,
         end_time: quickSlot.timeEnd,
         participants: Number(participants) || 10,
         purpose: "Kegiatan",
-        pic_phone: picPhone.trim(),
-        document_url: documentUrl.trim() || undefined,
+        requester_contact: picPhone.trim(),
+        document_url: documentUrl.trim() || "https://placeholder.url/doc",
       });
 
       await Promise.all([

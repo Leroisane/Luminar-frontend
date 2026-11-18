@@ -3,6 +3,7 @@ interface PaginationBarProps {
   perPage: number;
   total: number;
   onPageChange: (page: number) => void;
+  className?: string;
 }
 
 export default function PaginationBar({
@@ -10,12 +11,13 @@ export default function PaginationBar({
   perPage,
   total,
   onPageChange,
+  className = "",
 }: PaginationBarProps) {
   const totalPages = Math.max(1, Math.ceil(total / perPage));
   if (totalPages <= 1) return null;
 
   return (
-    <div className="flex items-center justify-between gap-2 mt-4 text-sm text-gray-600">
+    <div className={`flex items-center justify-between gap-2 mt-4 text-sm text-gray-600 ${className}`}>
       <span>
         Halaman {page} dari {totalPages} ({total} data)
       </span>

@@ -163,7 +163,7 @@ export function usePatchRoomStatus() {
       status,
     }: {
       id: string;
-      status: "tersedia" | "rusak" | "nonaktif";
+      status: "tersedia" | "renovasi" | "nonaktif";  // backend: oneof=tersedia renovasi nonaktif
     }) => patchAdminRoomStatusApi(id, status),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["admin", "rooms"] }),
   });

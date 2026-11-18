@@ -145,18 +145,17 @@ export default function BookingModal({
 
     try {
       const res = await createBookingApi({
-        room_id: Number(data.room_id) || data.room_id,
-        lembaga_id: Number(data.lembaga_id) || data.lembaga_id,
+        room_id: String(data.room_id),
+        lembaga_id: String(data.lembaga_id),
         program_kerja: data.program_kerja.trim(),
         agenda: data.agenda.trim(),
-        activity_name: data.agenda.trim(),
-        date: data.date,
+        booking_date: data.date,
         start_time: data.start_time,
         end_time: data.end_time,
         participants: Number(data.participants) || 10,
         purpose: data.purpose,
-        pic_phone: data.pic_phone.trim(),
-        document_url: data.document_url.trim() || undefined,
+        requester_contact: data.pic_phone.trim(),
+        document_url: data.document_url.trim() || "https://placeholder.url/doc",
       });
 
       const created = ((res?.data || res || {}) as unknown) as Record<string, unknown>;
