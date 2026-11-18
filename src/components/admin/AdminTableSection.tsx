@@ -1,426 +1,336 @@
-import { useMemo, useState } from "react";
+import { useState, type FormEvent } from "react";
 import {
-  Check,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  Download,
   ExternalLink,
   FileText,
-  ListChecks,
-  RotateCcw,
+  Plus,
   Search,
-  SlidersHorizontal,
+  Upload,
   X,
 } from "lucide-react";
-import type {
-  AvatarTone,
-  BookingRequest,
-  Decision,
-  RequestCategory,
-} from "../../types/admin";
-import type { StatusFilter } from "../../pages/AdminApprovalPage";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  createManualBookingApi,
+  exportAdminBookingsExcelApi,
+  getLetterDraftApi,
+  updateBookingStatusApi,
+  uploadFinalLetterApi,
+} from "../../api/adminService";
+import { getApiErrorMessage } from "../../api/axiosClient";
+import {
+  useAdminBookingsPaginated,
+  useAdminMasterLembaga,
+  useAdminMasterRooms,
+  type ExtendedAdminBooking,
+} from "../../hooks/useAdminQueries";
 import { cn } from "../../utils/helpers";
 
-const PAGE_SIZE = 4;
+interface Props {
+  globalSearch: string;
+}
 
-const categories: ("Semua Kategori" | RequestCategory)[] = [
-  "Semua Kategori",
-  "Auditorium",
-  "Laboratorium",
-  "Ruang Kelas",
-  "Peralatan Multimedia",
+const statusOptions = [
+  { value: "all", label: "Semua Status" },
+  { value: "pending", label: "Menunggu Review" },
+  { value: "review", label: "Sedang Direview" },
+  { value: "perlu_revisi", label: "Perlu Revisi" },
+  { value: "approved", label: "Disetujui" },
+  { value: "rejected", label: "Ditolak" },
+  { value: "cancelled", label: "Dibatalkan" },
 ];
 
-const avatarTone: Record<AvatarTone, string> = {
-  blue: "bg-blue-100 text-blue-700",
-  green: "bg-emerald-100 text-emerald-700",
-  violet: "bg-violet-100 text-violet-700",
-  amber: "bg-amber-100 text-amber-700",
-};
-
-interface Props {
-  requests: BookingRequest[];
-  globalSearch: string;
-  statusFilter?: StatusFilter;
-  decisions?: Record<string, Decision>;
-  onDecide: (ids: string[], decision: Decision) => void;
-  onUndo: (ids: string[]) => void;
+function getStatusBadgeStyle(raw: string): { label: string; cls: string } {
+  const s = raw.toLowerCase();
+  if (s.includes("approve") || s.includes("setuju"))
+    return { label: "Disetujui", cls: "bg-emerald-50 text-brand" };
+  if (s.includes("revisi"))
+    return { label: "Perlu Revisi", cls: "bg-amber-50 text-amber-700" };
+  if (s.includes("ttd") || s.includes("sign"))
+    return { label: "Menunggu TTD", cls: "bg-orange-50 text-orange-700" };
+  if (s.includes("reject") || s.includes("tolak"))
+    return { label: "Ditolak", cls: "bg-red-50 text-red-600" };
+  if (s.includes("cancel") || s.includes("batal"))
+    return { label: "Dibatalkan", cls: "bg-slate-100 text-slate-500" };
+  if (s.includes("review"))
+    return { label: "Review", cls: "bg-sky-50 text-sky-700" };
+  return { label: "Menunggu", cls: "bg-blue-50 text-blue-700" };
 }
 
-interface LastAction {
-  ids: string[];
-  decision: Decision;
-  label: string;
-}
-
-function getDocUrl(req: BookingRequest): string {
-  const doc = req.doc;
-  if (doc && "url" in doc && typeof doc.url === "string" && doc.url.trim()) {
-    return doc.url;
-  }
-
-  const safe = (str: string) =>
-    str.replace(/[^\x20-\x7E]/g, "-").replace(/[()\\]/g, "\\$&");
-
-  const lines = [
-    "LEMBAR PENGAJUAN PEMINJAMAN SARPRAS FILKOM UB",
-    "------------------------------------------------------------",
-    `ID Tiket     : ${safe(req.id)}`,
-    `Nama Pengaju : ${safe(req.name || "Mahasiswa")} (${safe(req.identifier || "-")})`,
-    `Organisasi   : ${safe(req.org || "-")}`,
-    `Fasilitas    : ${safe(req.room || "-")} (${safe(req.roomMeta || "-")})`,
-    `Jadwal       : ${safe(req.date)} | ${safe(req.time)}`,
-    `Dokumen      : ${safe(req.doc?.name ?? "Proposal_Kegiatan.pdf")}`,
-    "------------------------------------------------------------",
-    "Status       : Verifikasi Koordinator Sarpras FILKOM UB",
-  ];
-
-  const textOps = lines
-    .map((line, idx) => `1 0 0 1 50 ${740 - idx * 22} Tm (${line}) Tj`)
-    .join("\n");
-  const stream = `BT\n/F1 11 Tf\n${textOps}\nET`;
-
-  const objects = [
-    "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
-    "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n",
-    "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\nendobj\n",
-    `4 0 obj\n<< /Length ${stream.length} >>\nstream\n${stream}\nendstream\nendobj\n`,
-    "5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n",
-  ];
-
-  let pdf = "%PDF-1.4\n";
-  const offsets: number[] = [0];
-  for (const obj of objects) {
-    offsets.push(pdf.length);
-    pdf += obj;
-  }
-  const xrefStart = pdf.length;
-  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
-  for (let i = 1; i < offsets.length; i++) {
-    pdf += `${String(offsets[i]).padStart(10, "0")} 00000 n \n`;
-  }
-  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF`;
-
-  const blob = new Blob([pdf], { type: "application/pdf" });
-  return URL.createObjectURL(blob);
-}
-
-export default function AdminTableSection({
-  requests,
-  globalSearch,
-  statusFilter = "pending",
-  decisions = {},
-  onDecide,
-  onUndo,
-}: Props) {
-  const [category, setCategory] =
-    useState<(typeof categories)[number]>("Semua Kategori");
-  const [query, setQuery] = useState("");
+export default function AdminTableSection({ globalSearch }: Props) {
+  const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
-  const [bulkOpen, setBulkOpen] = useState(false);
-  const [last, setLast] = useState<LastAction | null>(null);
-  const [previewRequest, setPreviewRequest] = useState<BookingRequest | null>(
+  const perPage = 20;
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [localSearch, setLocalSearch] = useState("");
+  const combinedSearch = `${globalSearch} ${localSearch}`.trim();
+
+  const { data, isLoading } = useAdminBookingsPaginated({
+    page,
+    per_page: perPage,
+    status: statusFilter,
+    q: combinedSearch,
+  });
+
+  const rows = data?.items ?? [];
+  const total = data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / perPage));
+
+  // Modal Detail Peminjaman
+  const [selectedReq, setSelectedReq] = useState<ExtendedAdminBooking | null>(
     null,
   );
+  const [nextAction, setNextAction] = useState("");
+  const [actionNote, setActionNote] = useState("");
+  const [finalFile, setFinalFile] = useState<File | null>(null);
+  const [isSavingStatus, setIsSavingStatus] = useState(false);
 
-  const filtered = useMemo(() => {
-    const terms = [query, globalSearch]
-      .map((t) => t.trim().toLowerCase())
-      .filter(Boolean);
-    return requests.filter((r) => {
-      if (category !== "Semua Kategori" && r.category !== category)
-        return false;
-      const haystack =
-        `${r.name} ${r.identifier} ${r.org} ${r.room} ${r.roomMeta}`.toLowerCase();
-      return terms.every((t) => haystack.includes(t));
-    });
-  }, [requests, category, query, globalSearch]);
+  // Modal Tambah Manual Admin
+  const [manualModalOpen, setManualModalOpen] = useState(false);
+  const [manualForm, setManualForm] = useState({
+    applicant_name: "",
+    contact: "",
+    lembaga_id: "",
+    program_kerja: "",
+    agenda: "",
+    room_id: "",
+    date: "",
+    participants: "1",
+    start_time: "08:00",
+    end_time: "12:00",
+    purpose: "Kegiatan",
+    document_url: "",
+  });
+  const [isSavingManual, setIsSavingManual] = useState(false);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const safePage = Math.min(page, totalPages);
-  const pageRows = filtered.slice(
-    (safePage - 1) * PAGE_SIZE,
-    safePage * PAGE_SIZE,
-  );
-  const from = filtered.length === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1;
-  const to = from === 0 ? 0 : from + pageRows.length - 1;
+  const [toast, setToast] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const filterKey = `${category}|${query}|${globalSearch}|${statusFilter}`;
-  const [prevFilterKey, setPrevFilterKey] = useState(filterKey);
+  const { data: adminRooms } = useAdminMasterRooms(1, 100);
+  const { data: adminLembaga } = useAdminMasterLembaga(1, 100);
 
-  if (prevFilterKey !== filterKey) {
-    setPrevFilterKey(filterKey);
-    setPage(1);
-  }
-
-  const decide = (rows: BookingRequest[], decision: Decision) => {
-    if (rows.length === 0) return;
-    onDecide(
-      rows.map((r) => r.id),
-      decision,
-    );
-    setLast({
-      ids: rows.map((r) => r.id),
-      decision,
-      label: rows.length === 1 ? rows[0].name : `${rows.length} permohonan`,
-    });
-    setBulkOpen(false);
-    setPreviewRequest(null);
+  const showToast = (msg: string) => {
+    setToast(msg);
+    window.setTimeout(() => setToast(null), 4000);
   };
 
-  const sectionTitle =
-    statusFilter === "approved"
-      ? "Permohonan Disetujui"
-      : statusFilter === "rejected"
-        ? "Permohonan Ditolak"
-        : statusFilter === "all"
-          ? "Seluruh Riwayat Permohonan"
-          : "Permohonan Peminjaman Terbaru";
+  const handleSaveStatus = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!selectedReq || !nextAction || isSavingStatus) return;
+    setIsSavingStatus(true);
+    setErrorMsg(null);
 
-  const badgeText =
-    statusFilter === "pending"
-      ? `${requests.length} Baru`
-      : `${requests.length} Data`;
+    try {
+      if (nextAction === "upload_final_letter") {
+        if (!finalFile) {
+          throw new Error("Pilih file PDF surat final terlebih dahulu.");
+        }
+        await uploadFinalLetterApi(selectedReq.backendId, finalFile);
+      } else {
+        await updateBookingStatusApi(selectedReq.backendId, {
+          status: nextAction,
+          note: actionNote.trim() || undefined,
+          reason: actionNote.trim() || undefined,
+        });
+      }
+
+      await queryClient.invalidateQueries({ queryKey: ["admin"] });
+      setSelectedReq(null);
+      setNextAction("");
+      setActionNote("");
+      setFinalFile(null);
+      showToast("Status pengajuan berhasil diperbarui.");
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : getApiErrorMessage(err));
+    } finally {
+      setIsSavingStatus(false);
+    }
+  };
+
+  const handleOpenDraft = async (id: string | number) => {
+    try {
+      const blob = await getLetterDraftApi(id);
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank", "noreferrer");
+    } catch (err: unknown) {
+      setErrorMsg(getApiErrorMessage(err));
+    }
+  };
+
+  const handleCreateManual = async (e: FormEvent) => {
+    e.preventDefault();
+    if (isSavingManual) return;
+    setIsSavingManual(true);
+    setErrorMsg(null);
+
+    try {
+      await createManualBookingApi({
+        applicant_name: manualForm.applicant_name.trim(),
+        contact: manualForm.contact.trim(),
+        lembaga_id: Number(manualForm.lembaga_id) || manualForm.lembaga_id,
+        program_kerja: manualForm.program_kerja.trim(),
+        agenda: manualForm.agenda.trim(),
+        activity_name: manualForm.agenda.trim(),
+        room_id: Number(manualForm.room_id) || manualForm.room_id,
+        date: manualForm.date,
+        participants: Number(manualForm.participants) || 1,
+        start_time: manualForm.start_time,
+        end_time: manualForm.end_time,
+        purpose: manualForm.purpose,
+        document_url: manualForm.document_url.trim() || undefined,
+      });
+
+      await queryClient.invalidateQueries({ queryKey: ["admin"] });
+      setManualModalOpen(false);
+      showToast("Reservasi manual admin berhasil disimpan.");
+    } catch (err: unknown) {
+      setErrorMsg(getApiErrorMessage(err));
+    } finally {
+      setIsSavingManual(false);
+    }
+  };
 
   return (
-    <section
-      id="approval"
-      className="scroll-mt-24 rounded-2xl border border-line bg-white"
-    >
-      {/* Header */}
-      <div className="flex flex-col gap-4 p-5 sm:p-6 xl:flex-row xl:items-center xl:justify-between">
-        <div>
-          <h2 className="flex flex-wrap items-center gap-3 text-xl font-bold tracking-tight sm:text-2xl">
-            <span>{sectionTitle}</span>
-            <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-bold text-emerald-700">
-              {badgeText}
-            </span>
-          </h2>
-          <p className="mt-1 text-sm text-slate-600">
-            Daftar reservasi masuk yang memerlukan verifikasi dan otorisasi
-            persetujuan
-          </p>
+    <section className="rounded-2xl border border-line bg-white">
+      {/* Toolbar */}
+      <div className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-1 flex-wrap items-center gap-2.5">
+          <label className="flex min-w-[240px] flex-1 items-center gap-2 rounded-xl border border-line bg-slate-50 px-3.5 py-2 sm:max-w-sm">
+            <Search className="size-4 text-slate-400" />
+            <input
+              value={localSearch}
+              onChange={(e) => {
+                setLocalSearch(e.target.value);
+                setPage(1);
+              }}
+              placeholder="Cari no. reservasi, program kerja, agenda..."
+              className="w-full bg-transparent text-xs outline-none"
+            />
+          </label>
+
+          <select
+            value={statusFilter}
+            onChange={(e) => {
+              setStatusFilter(e.target.value);
+              setPage(1);
+            }}
+            className="rounded-xl border border-line bg-white px-3 py-2 text-xs font-semibold text-ink outline-none focus:border-brand cursor-pointer"
+          >
+            {statusOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
-          <label className="flex items-center gap-2 text-sm text-slate-600">
-            <span className="whitespace-nowrap">Kategori:</span>
-            <span className="relative">
-              <select
-                value={category}
-                onChange={(e) =>
-                  setCategory(e.target.value as (typeof categories)[number])
-                }
-                className="appearance-none rounded-xl border border-line bg-white py-2 pl-3 pr-9 text-sm font-medium text-ink outline-none cursor-pointer"
-              >
-                {categories.map((c) => (
-                  <option key={c}>{c}</option>
-                ))}
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-slate-500" />
-            </span>
-          </label>
-
-          <label className="flex min-w-[200px] flex-1 items-center gap-2 rounded-xl border border-line bg-slate-50 px-3 py-2 xl:flex-none">
-            <SlidersHorizontal className="size-4 shrink-0 text-slate-400" />
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Cari dalam tabel..."
-              className="w-full bg-transparent text-sm outline-none placeholder:text-slate-400"
-            />
-            <Search className="size-4 shrink-0 text-slate-400" />
-          </label>
-
-          {statusFilter === "pending" && (
-            <div className="relative shrink-0">
-              <button
-                type="button"
-                onClick={() => setBulkOpen((v) => !v)}
-                disabled={pageRows.length === 0}
-                aria-expanded={bulkOpen}
-                className="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
-              >
-                <ListChecks className="size-4 shrink-0" /> Aksi Masal
-              </button>
-              {bulkOpen && (
-                <>
-                  <button
-                    type="button"
-                    aria-label="Tutup menu"
-                    className="fixed inset-0 z-10 cursor-default"
-                    onClick={() => setBulkOpen(false)}
-                  />
-                  <div className="absolute right-0 z-20 mt-2 w-60 rounded-xl border border-line bg-white p-1.5 shadow-lg">
-                    <button
-                      type="button"
-                      onClick={() => decide(pageRows, "approved")}
-                      className="w-full rounded-lg px-3 py-2 text-left text-sm font-semibold text-brand hover:bg-emerald-50 cursor-pointer"
-                    >
-                      Setujui {pageRows.length} di halaman ini
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => decide(pageRows, "rejected")}
-                      className="w-full rounded-lg px-3 py-2 text-left text-sm font-semibold text-red-600 hover:bg-red-50 cursor-pointer"
-                    >
-                      Tolak {pageRows.length} di halaman ini
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setManualModalOpen(true)}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-brand px-3.5 py-2 text-xs font-semibold text-white hover:bg-brand-dark cursor-pointer"
+          >
+            <Plus className="size-4" /> Tambah Peminjaman
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              void exportAdminBookingsExcelApi(
+                statusFilter !== "all" ? { status: statusFilter } : undefined,
+              )
+            }
+            className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-emerald-700 cursor-pointer"
+          >
+            <Download className="size-4" /> Export Excel
+          </button>
         </div>
       </div>
 
-      {/* Undo notice */}
-      {last && (
-        <div
-          role="status"
-          className="mx-5 mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm text-white sm:mx-6"
-        >
-          <span>
-            <strong>{last.label}</strong>{" "}
-            {last.decision === "approved" ? "disetujui" : "ditolak"}.
-          </span>
-          <button
-            type="button"
-            onClick={() => {
-              onUndo(last.ids);
-              setLast(null);
-            }}
-            className="font-semibold text-emerald-300 hover:underline cursor-pointer"
-          >
-            Batalkan
-          </button>
+      {toast && (
+        <div className="mx-5 mb-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs font-semibold text-brand">
+          {toast}
+        </div>
+      )}
+      {errorMsg && (
+        <div className="mx-5 mb-3 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-xs font-semibold text-red-700">
+          {errorMsg}
         </div>
       )}
 
-      {/* Table */}
+      {/* Tabel */}
       <div className="overflow-x-auto border-t border-line">
-        <table className="w-full min-w-[900px] text-left">
+        <table className="w-full min-w-[920px] text-left text-xs">
           <thead>
-            <tr className="text-xs font-bold uppercase tracking-wide text-slate-600">
-              <th className="px-6 py-4 font-bold">Nama Pengaju</th>
-              <th className="px-3 py-4 font-bold">Ruang / Barang</th>
-              <th className="px-3 py-4 font-bold">Tanggal Pinjam</th>
-              <th className="px-3 py-4 font-bold">Dokumen</th>
-              <th className="px-6 py-4 text-right font-bold">Aksi</th>
+            <tr className="bg-slate-50/70 font-bold uppercase tracking-wider text-slate-500">
+              <th className="px-4 py-3.5">Status</th>
+              <th className="px-3 py-3.5">No.</th>
+              <th className="px-3 py-3.5">Tanggal</th>
+              <th className="px-3 py-3.5">Ruangan</th>
+              <th className="px-3 py-3.5">Lembaga</th>
+              <th className="px-3 py-3.5">Program Kerja</th>
+              <th className="px-4 py-3.5">Agenda</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-line border-t border-line">
-            {pageRows.map((r) => {
-              const rowDecision = decisions[r.id];
-              return (
-                <tr key={r.id} className="align-middle hover:bg-slate-50/60">
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-3">
+          <tbody className="divide-y divide-line">
+            {isLoading && (
+              <tr>
+                <td colSpan={7} className="py-10 text-center text-slate-400">
+                  Memuat data peminjaman...
+                </td>
+              </tr>
+            )}
+            {!isLoading &&
+              rows.map((r) => {
+                const badge = getStatusBadgeStyle(r.rawStatus);
+                return (
+                  <tr
+                    key={r.id}
+                    onClick={() => {
+                      setSelectedReq(r);
+                      setNextAction("");
+                      setActionNote("");
+                      setFinalFile(null);
+                    }}
+                    className="cursor-pointer transition hover:bg-emerald-50/40"
+                  >
+                    <td className="px-4 py-3.5">
                       <span
                         className={cn(
-                          "flex size-11 aspect-square shrink-0 items-center justify-center rounded-full text-sm font-bold",
-                          avatarTone[r.tone],
+                          "inline-block whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-bold",
+                          badge.cls,
                         )}
                       >
-                        {r.initials}
+                        {badge.label}
                       </span>
-                      <div className="leading-tight">
-                        <p className="text-[15px] font-bold">{r.name}</p>
-                        <p className="mt-0.5 text-xs text-slate-500">
-                          {r.identifier} • {r.org}
-                        </p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-3 py-4">
-                    <p className="text-[15px] font-bold leading-tight text-brand">
-                      {r.room}
-                    </p>
-                    <p className="mt-0.5 text-xs text-slate-500">
-                      {r.roomMeta}
-                    </p>
-                  </td>
-                  <td className="px-3 py-4">
-                    <p className="text-[15px] font-bold leading-tight">
+                    </td>
+                    <td className="px-3 py-3.5">
+                      <span className="rounded-md bg-indigo-50 px-2 py-0.5 font-mono text-[11px] font-bold text-indigo-700">
+                        {r.ticketCode}
+                      </span>
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-3.5 text-slate-600">
                       {r.date}
-                    </p>
-                    <p className="mt-0.5 text-xs text-slate-500">{r.time}</p>
-                  </td>
-                  <td className="px-3 py-4">
-                    <button
-                      type="button"
-                      onClick={() => setPreviewRequest(r)}
-                      title="Klik untuk pratinjau dokumen pengajuan"
-                      className="inline-flex items-center gap-2 rounded-lg border border-line bg-slate-50 px-2.5 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:border-brand/40 hover:bg-emerald-50/70 hover:text-brand cursor-pointer"
-                    >
-                      <FileText
-                        className={cn(
-                          "size-4 shrink-0",
-                          r.doc?.kind === "pdf"
-                            ? "text-red-500"
-                            : "text-blue-500",
-                        )}
-                      />
-                      <span className="max-w-[180px] truncate">
-                        {r.doc?.name ?? "Dokumen_Pengajuan.pdf"}
-                      </span>
-                    </button>
-                  </td>
-                  <td className="px-6 py-4">
-                    {rowDecision ? (
-                      <div className="flex items-center justify-end gap-2">
-                        <span
-                          className={cn(
-                            "rounded-full px-3 py-1 text-xs font-bold whitespace-nowrap",
-                            rowDecision === "approved"
-                              ? "bg-emerald-50 text-brand"
-                              : "bg-red-50 text-red-600",
-                          )}
-                        >
-                          {rowDecision === "approved" ? "Disetujui" : "Ditolak"}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => onUndo([r.id])}
-                          className="inline-flex items-center gap-1 rounded-lg border border-line bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 cursor-pointer whitespace-nowrap"
-                        >
-                          <RotateCcw className="size-3.5" /> Ubah
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="flex items-center justify-end gap-2">
-                        <button
-                          type="button"
-                          onClick={() => decide([r], "approved")}
-                          className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-dark cursor-pointer"
-                        >
-                          <Check className="size-4 shrink-0" /> Approve
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => decide([r], "rejected")}
-                          className="shrink-0 whitespace-nowrap rounded-lg border border-line bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-600 cursor-pointer"
-                        >
-                          Reject
-                        </button>
-                      </div>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-
-            {pageRows.length === 0 && (
+                    </td>
+                    <td className="px-3 py-3.5 font-semibold text-ink">
+                      {r.room}
+                    </td>
+                    <td className="px-3 py-3.5 font-semibold text-slate-700">
+                      {r.org}
+                    </td>
+                    <td className="max-w-[220px] truncate px-3 py-3.5 text-slate-700">
+                      {r.programKerja}
+                    </td>
+                    <td className="max-w-[240px] truncate px-4 py-3.5 text-slate-600">
+                      {r.agenda}
+                    </td>
+                  </tr>
+                );
+              })}
+            {!isLoading && rows.length === 0 && (
               <tr>
-                <td
-                  colSpan={5}
-                  className="px-6 py-14 text-center text-sm text-slate-500"
-                >
-                  {requests.length === 0
-                    ? statusFilter === "pending"
-                      ? "Semua permohonan sudah diproses."
-                      : "Belum ada permohonan pada kategori status ini."
-                    : "Tidak ada permohonan yang cocok dengan filter atau pencarian."}
+                <td colSpan={7} className="py-12 text-center text-slate-500">
+                  Tidak ada data peminjaman yang ditemukan.
                 </td>
               </tr>
             )}
@@ -428,123 +338,483 @@ export default function AdminTableSection({
         </table>
       </div>
 
-      {/* Pagination */}
-      <div className="flex flex-col gap-3 border-t border-line px-5 py-4 text-sm sm:flex-row sm:items-center sm:justify-between sm:px-6">
-        <p className="text-slate-600">
-          Menampilkan{" "}
-          <strong className="font-semibold text-ink">
-            {from}–{to}
-          </strong>{" "}
-          dari{" "}
-          <strong className="font-semibold text-ink">{filtered.length}</strong>{" "}
-          permohonan
-        </p>
+      {/* Pagination Footer */}
+      <div className="flex items-center justify-between border-t border-line px-5 py-3.5 text-xs text-slate-600">
+        <span>
+          Halaman <strong>{page}</strong> dari <strong>{totalPages}</strong> (
+          {total} total data)
+        </span>
         <div className="flex items-center gap-1.5">
           <button
             type="button"
-            aria-label="Halaman sebelumnya"
-            disabled={safePage === 1}
-            onClick={() => setPage(safePage - 1)}
-            className="flex size-9 items-center justify-center rounded-lg border border-line disabled:opacity-40 cursor-pointer"
+            disabled={page <= 1}
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            className="rounded-lg border border-line p-1.5 disabled:opacity-40 cursor-pointer"
           >
             <ChevronLeft className="size-4" />
           </button>
-          {Array.from({ length: totalPages }, (_, i) => i + 1).map((n) => (
-            <button
-              key={n}
-              type="button"
-              onClick={() => setPage(n)}
-              aria-current={n === safePage ? "page" : undefined}
-              className={cn(
-                "flex size-9 items-center justify-center rounded-lg border text-sm font-semibold cursor-pointer",
-                n === safePage
-                  ? "border-brand bg-brand text-white"
-                  : "border-line hover:bg-slate-50",
-              )}
-            >
-              {n}
-            </button>
-          ))}
           <button
             type="button"
-            aria-label="Halaman berikutnya"
-            disabled={safePage === totalPages}
-            onClick={() => setPage(safePage + 1)}
-            className="flex size-9 items-center justify-center rounded-lg border border-line disabled:opacity-40 cursor-pointer"
+            disabled={page >= totalPages}
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            className="rounded-lg border border-line p-1.5 disabled:opacity-40 cursor-pointer"
           >
             <ChevronRight className="size-4" />
           </button>
         </div>
       </div>
 
-      {/* Modal Pratinjau Dokumen Proposal */}
-      {previewRequest && (
+      {/* Modal Detail Peminjaman & Ubah Status */}
+      {selectedReq && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
-          <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-line bg-white shadow-xl">
-            <div className="flex items-start justify-between gap-4 border-b border-line px-6 py-4">
-              <div>
-                <span className="inline-block rounded-md bg-emerald-50 px-2.5 py-0.5 text-[11px] font-bold text-brand">
-                  Pratinjau Dokumen Pendukung
+          <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-line bg-white p-6 shadow-xl">
+            <div className="flex items-center justify-between border-b border-line pb-3">
+              <div className="flex items-center gap-2">
+                <span
+                  className={cn(
+                    "rounded-full px-2.5 py-0.5 text-[11px] font-bold",
+                    getStatusBadgeStyle(selectedReq.rawStatus).cls,
+                  )}
+                >
+                  {getStatusBadgeStyle(selectedReq.rawStatus).label}
                 </span>
-                <h3 className="mt-1 text-base font-bold text-slate-900">
-                  {previewRequest.doc?.name ?? "Dokumen_Pengajuan.pdf"}
-                </h3>
-                <p className="mt-0.5 text-xs text-slate-500">
-                  Pengaju:{" "}
-                  <strong className="text-slate-700">
-                    {previewRequest.name}
-                  </strong>{" "}
-                  ({previewRequest.org}) •{" "}
-                  <strong className="text-brand">{previewRequest.room}</strong>{" "}
-                  ({previewRequest.date}, {previewRequest.time})
-                </p>
+                <span className="rounded-md bg-indigo-50 px-2 py-0.5 font-mono text-[11px] font-bold text-indigo-700">
+                  {selectedReq.ticketCode}
+                </span>
               </div>
               <button
                 type="button"
-                onClick={() => setPreviewRequest(null)}
-                aria-label="Tutup pratinjau"
-                className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 cursor-pointer"
+                onClick={() => setSelectedReq(null)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 cursor-pointer"
               >
                 <X className="size-5" />
               </button>
             </div>
 
-            <div className="flex-1 bg-slate-100 p-4">
-              <iframe
-                src={getDocUrl(previewRequest)}
-                title={previewRequest.doc?.name ?? "Pratinjau Dokumen"}
-                className="h-[52vh] w-full rounded-xl border border-line bg-white"
-              />
-            </div>
+            <dl className="mt-4 space-y-2.5 text-xs">
+              <div>
+                <dt className="font-bold text-slate-500">Ruangan</dt>
+                <dd className="text-sm font-semibold text-ink">
+                  {selectedReq.room}
+                </dd>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <dt className="font-bold text-slate-500">Tanggal</dt>
+                  <dd className="text-ink">{selectedReq.date}</dd>
+                </div>
+                <div>
+                  <dt className="font-bold text-slate-500">Waktu</dt>
+                  <dd className="font-mono text-ink">{selectedReq.time}</dd>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <dt className="font-bold text-slate-500">Peserta</dt>
+                  <dd className="text-ink">
+                    {selectedReq.participants ?? "-"} orang
+                  </dd>
+                </div>
+                <div>
+                  <dt className="font-bold text-slate-500">Keperluan</dt>
+                  <dd className="text-ink">{selectedReq.purpose}</dd>
+                </div>
+              </div>
+              <div>
+                <dt className="font-bold text-slate-500">Agenda</dt>
+                <dd className="text-ink">{selectedReq.agenda}</dd>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <dt className="font-bold text-slate-500">Program Kerja</dt>
+                  <dd className="text-ink">{selectedReq.programKerja}</dd>
+                </div>
+                <div>
+                  <dt className="font-bold text-slate-500">Lembaga</dt>
+                  <dd className="font-semibold text-ink">{selectedReq.org}</dd>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <dt className="font-bold text-slate-500">Nama Pengaju</dt>
+                  <dd className="text-ink">{selectedReq.name}</dd>
+                </div>
+                <div>
+                  <dt className="font-bold text-slate-500">NIM / Identitas</dt>
+                  <dd className="font-mono text-ink">
+                    {selectedReq.identifier}
+                  </dd>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <dt className="font-bold text-slate-500">Program Studi</dt>
+                  <dd className="text-ink">{selectedReq.programStudy}</dd>
+                </div>
+                <div>
+                  <dt className="font-bold text-slate-500">Contact</dt>
+                  <dd className="text-ink">{selectedReq.contact}</dd>
+                </div>
+              </div>
 
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-6 py-3.5">
-              <a
-                href={getDocUrl(previewRequest)}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1.5 text-xs font-semibold text-brand hover:underline"
-              >
-                <ExternalLink className="size-3.5" /> Buka Berkas di Tab Baru
-              </a>
-
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-4 pt-1">
+                {selectedReq.documentUrl && (
+                  <a
+                    href={selectedReq.documentUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 font-semibold text-brand hover:underline"
+                  >
+                    Link Berkas <ExternalLink className="size-3.5" />
+                  </a>
+                )}
                 <button
                   type="button"
-                  onClick={() => decide([previewRequest], "rejected")}
-                  className="rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-xs font-semibold text-red-600 transition hover:bg-red-100 cursor-pointer"
+                  onClick={() => void handleOpenDraft(selectedReq.backendId)}
+                  className="inline-flex items-center gap-1 font-semibold text-sky-700 hover:underline cursor-pointer"
                 >
-                  Tolak Pengajuan
+                  <FileText className="size-3.5" /> Draft Surat Resmi
                 </button>
+                {selectedReq.finalLetterUrl && (
+                  <a
+                    href={selectedReq.finalLetterUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 font-semibold text-emerald-700 hover:underline"
+                  >
+                    Download Surat Final <ExternalLink className="size-3.5" />
+                  </a>
+                )}
+              </div>
+
+              {selectedReq.revisionHistory && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-900">
+                  <p className="font-bold">Riwayat Revisi (Dari Admin)</p>
+                  <p className="mt-1 whitespace-pre-line">
+                    {selectedReq.revisionHistory}
+                  </p>
+                </div>
+              )}
+
+              {selectedReq.rejectionReason && (
+                <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-red-900">
+                  <p className="font-bold">Alasan Penolakan</p>
+                  <p className="mt-1">{selectedReq.rejectionReason}</p>
+                </div>
+              )}
+            </dl>
+
+            {/* Form Ubah Status */}
+            <form
+              onSubmit={(e) => void handleSaveStatus(e)}
+              className="mt-5 border-t border-line pt-4 text-xs"
+            >
+              <label className="mb-1.5 block font-bold text-slate-700">
+                Ubah Status
+              </label>
+              <select
+                value={nextAction}
+                onChange={(e) => setNextAction(e.target.value)}
+                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 outline-none focus:border-brand"
+              >
+                <option value="">-- Pilih Status --</option>
+                <option value="review">Review</option>
+                <option value="perlu_revisi">Minta Revisi</option>
+                <option value="approve">Setujui</option>
+                <option value="upload_final_letter">Upload Surat Final</option>
+                <option value="hand_over">
+                  Serah Terima Kunci (Hand Over)
+                </option>
+                <option value="return">Selesai / Pengembalian (Return)</option>
+                <option value="reject">Tolak</option>
+                <option value="cancel">Batalkan</option>
+              </select>
+
+              {(nextAction === "perlu_revisi" || nextAction === "reject") && (
+                <textarea
+                  required
+                  rows={3}
+                  value={actionNote}
+                  onChange={(e) => setActionNote(e.target.value)}
+                  placeholder={
+                    nextAction === "perlu_revisi"
+                      ? "Tuliskan poin revisi yang harus diperbaiki pemohon..."
+                      : "Tuliskan alasan penolakan..."
+                  }
+                  className="mt-2.5 w-full rounded-xl border border-slate-300 px-3 py-2 outline-none focus:border-brand"
+                />
+              )}
+
+              {nextAction === "upload_final_letter" && (
+                <label className="mt-2.5 flex items-center justify-center gap-2 rounded-xl border border-dashed border-brand/50 bg-emerald-50/50 p-3 font-semibold text-brand cursor-pointer">
+                  <Upload className="size-4" />
+                  <span>
+                    {finalFile
+                      ? finalFile.name
+                      : "Pilih File PDF Surat Final Bertanda Tangan"}
+                  </span>
+                  <input
+                    type="file"
+                    accept=".pdf"
+                    onChange={(e) => setFinalFile(e.target.files?.[0] ?? null)}
+                    className="hidden"
+                  />
+                </label>
+              )}
+
+              <div className="mt-4 flex items-center justify-between">
+                <span className="text-[11px] text-slate-400">
+                  Pilih action dan klik simpan
+                </span>
                 <button
-                  type="button"
-                  onClick={() => decide([previewRequest], "approved")}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-brand px-4 py-2 text-xs font-semibold text-white transition hover:bg-brand-dark cursor-pointer"
+                  type="submit"
+                  disabled={!nextAction || isSavingStatus}
+                  className="rounded-xl bg-brand px-4 py-2 font-semibold text-white hover:bg-brand-dark disabled:opacity-40 cursor-pointer"
                 >
-                  <Check className="size-3.5" /> Setujui Sekarang
+                  {isSavingStatus ? "Menyimpan..." : "Simpan Status"}
                 </button>
               </div>
-            </div>
+            </form>
           </div>
+        </div>
+      )}
+
+      {/* Modal Tambah Peminjaman Ruangan (Admin Manual) */}
+      {manualModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <form
+            onSubmit={(e) => void handleCreateManual(e)}
+            className="max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-2xl border border-line bg-white p-6 shadow-xl"
+          >
+            <div className="flex items-center justify-between border-b border-line pb-3">
+              <h3 className="text-base font-bold text-ink">
+                Tambah Peminjaman Ruangan (Admin Manual)
+              </h3>
+              <button
+                type="button"
+                onClick={() => setManualModalOpen(false)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 cursor-pointer"
+              >
+                <X className="size-5" />
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-3 text-xs">
+              <div>
+                <label className="mb-1 block font-semibold text-slate-700">
+                  Nama Pemohon / Dosen / Panitia *
+                </label>
+                <input
+                  required
+                  value={manualForm.applicant_name}
+                  onChange={(e) =>
+                    setManualForm({
+                      ...manualForm,
+                      applicant_name: e.target.value,
+                    })
+                  }
+                  placeholder="Contoh: Dr. Eng. Herman / Panitia Workshop..."
+                  className="w-full rounded-xl border border-slate-300 px-3 py-2 outline-none focus:border-brand"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block font-semibold text-slate-700">
+                  Kontak Pemohon / WhatsApp *
+                </label>
+                <input
+                  required
+                  value={manualForm.contact}
+                  onChange={(e) =>
+                    setManualForm({ ...manualForm, contact: e.target.value })
+                  }
+                  placeholder="Contoh: 081234567890"
+                  className="w-full rounded-xl border border-slate-300 px-3 py-2 outline-none focus:border-brand"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block font-semibold text-slate-700">
+                  Lembaga *
+                </label>
+                <select
+                  required
+                  value={manualForm.lembaga_id}
+                  onChange={(e) =>
+                    setManualForm({ ...manualForm, lembaga_id: e.target.value })
+                  }
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 outline-none focus:border-brand"
+                >
+                  <option value="">Pilih...</option>
+                  {(adminLembaga?.items ?? []).map((l, i) => (
+                    <option key={String(l.id ?? i)} value={String(l.id ?? "")}>
+                      {String(l.name ?? "")}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-1 block font-semibold text-slate-700">
+                  Program Kerja / Nama Acara *
+                </label>
+                <input
+                  required
+                  value={manualForm.program_kerja}
+                  onChange={(e) =>
+                    setManualForm({
+                      ...manualForm,
+                      program_kerja: e.target.value,
+                    })
+                  }
+                  placeholder="Nama kegiatan..."
+                  className="w-full rounded-xl border border-slate-300 px-3 py-2 outline-none focus:border-brand"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block font-semibold text-slate-700">
+                  Agenda *
+                </label>
+                <input
+                  required
+                  value={manualForm.agenda}
+                  onChange={(e) =>
+                    setManualForm({ ...manualForm, agenda: e.target.value })
+                  }
+                  placeholder="Agenda acara..."
+                  className="w-full rounded-xl border border-slate-300 px-3 py-2 outline-none focus:border-brand"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block font-semibold text-slate-700">
+                  Ruangan *
+                </label>
+                <select
+                  required
+                  value={manualForm.room_id}
+                  onChange={(e) =>
+                    setManualForm({ ...manualForm, room_id: e.target.value })
+                  }
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 outline-none focus:border-brand"
+                >
+                  <option value="">Pilih...</option>
+                  {(adminRooms?.items ?? []).map((rm, i) => (
+                    <option
+                      key={String(rm.id ?? i)}
+                      value={String(rm.id ?? "")}
+                    >
+                      {String(rm.name ?? "")}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block font-semibold text-slate-700">
+                    Tanggal Peminjaman *
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={manualForm.date}
+                    onChange={(e) =>
+                      setManualForm({ ...manualForm, date: e.target.value })
+                    }
+                    className="w-full rounded-xl border border-slate-300 px-3 py-2 outline-none focus:border-brand"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block font-semibold text-slate-700">
+                    Jumlah Peserta
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={manualForm.participants}
+                    onChange={(e) =>
+                      setManualForm({
+                        ...manualForm,
+                        participants: e.target.value,
+                      })
+                    }
+                    className="w-full rounded-xl border border-slate-300 px-3 py-2 outline-none focus:border-brand"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block font-semibold text-slate-700">
+                    Waktu Mulai *
+                  </label>
+                  <input
+                    type="time"
+                    required
+                    value={manualForm.start_time}
+                    onChange={(e) =>
+                      setManualForm({
+                        ...manualForm,
+                        start_time: e.target.value,
+                      })
+                    }
+                    className="w-full rounded-xl border border-slate-300 px-3 py-2 outline-none focus:border-brand"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block font-semibold text-slate-700">
+                    Waktu Selesai *
+                  </label>
+                  <input
+                    type="time"
+                    required
+                    value={manualForm.end_time}
+                    onChange={(e) =>
+                      setManualForm({ ...manualForm, end_time: e.target.value })
+                    }
+                    className="w-full rounded-xl border border-slate-300 px-3 py-2 outline-none focus:border-brand"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1 block font-semibold text-slate-700">
+                  Link Dokumen (Google Drive, Opsional)
+                </label>
+                <input
+                  type="url"
+                  value={manualForm.document_url}
+                  onChange={(e) =>
+                    setManualForm({
+                      ...manualForm,
+                      document_url: e.target.value,
+                    })
+                  }
+                  placeholder="https://drive.google.com/..."
+                  className="w-full rounded-xl border border-slate-300 px-3 py-2 outline-none focus:border-brand"
+                />
+              </div>
+            </div>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setManualModalOpen(false)}
+                className="rounded-xl border border-line px-4 py-2 text-xs font-semibold text-slate-600 cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="submit"
+                disabled={isSavingManual}
+                className="rounded-xl bg-brand px-4 py-2 text-xs font-semibold text-white hover:bg-brand-dark disabled:opacity-50 cursor-pointer"
+              >
+                {isSavingManual ? "Menyimpan..." : "Simpan Reservasi"}
+              </button>
+            </div>
+          </form>
         </div>
       )}
     </section>

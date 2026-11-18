@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import DashboardNavbar from "../components/dashboard/DashboardNavbar";
 import HeroSection, {
   type SearchPayload,
@@ -12,16 +13,8 @@ import BookingModal, {
 } from "../components/dashboard/BookingModal";
 import type { Facility } from "../types";
 
-function getStoredBooking(): SubmittedBooking | null {
-  try {
-    const raw = localStorage.getItem("luminar_latest_booking");
-    return raw ? (JSON.parse(raw) as SubmittedBooking) : null;
-  } catch {
-    return null;
-  }
-}
-
 export default function Dashboard() {
+  const queryClient = useQueryClient();
   const [selectedDate, setSelectedDate] = useState(() => new Date());
   const [searchQuery, setSearchQuery] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -29,7 +22,7 @@ export default function Dashboard() {
     null,
   );
   const [latestBooking, setLatestBooking] = useState<SubmittedBooking | null>(
-    getStoredBooking,
+    null,
   );
 
   const handleSearch = ({ query, date }: SearchPayload) => {
@@ -45,6 +38,8 @@ export default function Dashboard() {
 
   const handleBookingSuccess = (newBooking: SubmittedBooking) => {
     setLatestBooking(newBooking);
+    void queryClient.invalidateQueries({ queryKey: ["my-bookings"] });
+    void queryClient.invalidateQueries({ queryKey: ["slots"] });
     document.getElementById("riwayat")?.scrollIntoView({ behavior: "smooth" });
   };
 

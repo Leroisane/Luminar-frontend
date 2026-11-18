@@ -4,6 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Link, useNavigate } from "react-router-dom";
 import { loginApi, getProfileApi } from "../api/authService";
+import { getApiErrorMessage } from "../api/axiosClient";
 import { useAuthStore } from "../store/useAuthStore";
 
 const loginSchema = z.object({
@@ -33,18 +34,23 @@ export default function LoginPage() {
     setErrorMsg(null);
     try {
       const res = await loginApi(data);
-      const token =
+      const accessToken =
         res?.data?.access_token ||
         res?.data?.token ||
         res?.access_token ||
         res?.token;
+      const refreshToken =
+        res?.data?.refresh_token || res?.refresh_token || null;
 
-      if (!token) {
-        throw new Error("Token tidak ditemukan pada respons server");
+      if (!accessToken) {
+        throw new Error("Access token tidak ditemukan pada respons server");
       }
 
-      // Simpan token sementara agar interceptor Axios bisa memanggil /auth/me
-      localStorage.setItem("access_token", token);
+      // Simpan token sementara agar interceptor Axios menyisipkan Bearer token ke /auth/me
+      localStorage.setItem("access_token", accessToken);
+      if (refreshToken) {
+        localStorage.setItem("refresh_token", refreshToken);
+      }
 
       let userData = res?.data?.user || res?.user;
       if (!userData) {
@@ -52,30 +58,12 @@ export default function LoginPage() {
         userData = profileRes?.data || profileRes;
       }
 
-      setAuth(userData, token);
+      setAuth(userData, accessToken, refreshToken);
 
-      // Arahkan sesuai role
       const role = userData?.role?.toLowerCase();
       navigate(role === "admin" ? "/admin" : "/", { replace: true });
     } catch (err: unknown) {
-      console.error("Detail Error API:", err);
-      const apiErr = err as {
-        response?: {
-          status?: number;
-          data?: { message?: string; error?: string; detail?: string };
-        };
-      };
-      const status = apiErr?.response?.status;
-      const serverMsg =
-        apiErr?.response?.data?.message ||
-        apiErr?.response?.data?.error ||
-        apiErr?.response?.data?.detail;
-
-      setErrorMsg(
-        serverMsg
-          ? `(${status}) ${serverMsg}`
-          : `Gagal terhubung ke server (${status || "Network/Ngrok Offline"}).`,
-      );
+      setErrorMsg(getApiErrorMessage(err));
     }
   };
 
@@ -154,7 +142,6 @@ export default function LoginPage() {
           </Link>
         </p>
 
-        {/* Bypass Sementara Selama Backend Ngrok Offline / Mode Demo Vercel */}
         {showDemoAccess && (
           <div className="pt-4 border-t border-gray-100 space-y-2.5">
             <p className="text-[11px] text-center text-gray-400">

@@ -1,11 +1,18 @@
+import { useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import {
+  BrowserRouter as Router,
+  Routes,
+  Route,
+  Navigate,
+} from "react-router-dom";
 import "./App.css";
 import Dashboard from "./pages/Dashboard";
 import AdminApprovalPage from "./pages/AdminApprovalPage";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import ProtectedRoute from "./components/ProtectedRoute";
+import { useAuthStore } from "./store/useAuthStore";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -16,10 +23,21 @@ const queryClient = new QueryClient({
   },
 });
 
+function SessionSync() {
+  const syncProfile = useAuthStore((state) => state.syncProfile);
+
+  useEffect(() => {
+    void syncProfile();
+  }, [syncProfile]);
+
+  return null;
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <Router>
+        <SessionSync />
         <Routes>
           {/* Rute Publik */}
           <Route path="/login" element={<LoginPage />} />
@@ -44,6 +62,9 @@ function App() {
               </ProtectedRoute>
             }
           />
+
+          {/* Fallback 404 */}
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Router>
     </QueryClientProvider>

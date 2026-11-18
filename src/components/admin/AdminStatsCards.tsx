@@ -1,111 +1,57 @@
-import type { ReactNode } from "react";
-import {
-  ArrowUp,
-  BadgeCheck,
-  CircleCheck,
-  ClipboardList,
-  SquareCheckBig,
-  type LucideIcon,
-} from "lucide-react";
+import { useAdminBookingStats } from "../../hooks/useAdminQueries";
 
 interface Props {
-  pending: number;
-  approvedToday: number;
-}
-
-interface Card {
-  label: string;
-  value: number;
-  unit: string;
-  icon: LucideIcon;
-  iconBox: string;
-  bar: string;
-  footer: ReactNode;
+  pending?: number;
+  approvedToday?: number;
 }
 
 export default function AdminStatsCards({ pending, approvedToday }: Props) {
-  const cards: Card[] = [
+  const { data: stats } = useAdminBookingStats();
+
+  const cards = [
     {
-      label: "Menunggu Persetujuan",
-      value: pending,
-      unit: "Berkas",
-      icon: ClipboardList,
-      iconBox: "bg-amber-100 text-amber-700",
-      bar: "bg-amber-400",
-      footer: (
-        <span className="inline-flex items-center gap-2 rounded-md bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">
-          <span className="size-1.5 rounded-full bg-amber-500" />3 berkas butuh
-          respons cepat &lt; 2 jam
-        </span>
-      ),
+      label: "Total Pengajuan",
+      value: stats?.total ?? 0,
+      accent: "border-t-indigo-500 text-indigo-600",
     },
     {
-      label: "Disetujui Hari Ini",
-      value: approvedToday,
-      unit: "Pengajuan",
-      icon: CircleCheck,
-      iconBox: "bg-emerald-100 text-emerald-700",
-      bar: "bg-brand",
-      footer: (
-        <span className="inline-flex items-center gap-1.5 rounded-md bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800">
-          <ArrowUp className="size-3.5" /> +4 berkas dibanding kemarin
-        </span>
-      ),
+      label: "Perlu Diulas",
+      value: stats?.pending ?? pending ?? 0,
+      accent: "border-t-sky-500 text-sky-600",
     },
     {
-      label: "Item Dikelola",
-      value: 112,
-      unit: "Unit",
-      icon: SquareCheckBig,
-      iconBox: "bg-slate-100 text-slate-700",
-      bar: "bg-slate-400",
-      footer: (
-        <span className="flex items-center gap-2 text-xs font-medium text-slate-600">
-          38 Ruangan <span className="size-1 rounded-full bg-slate-300" /> 74
-          Perangkat Lab
-        </span>
-      ),
+      label: "Sedang Direview",
+      value: stats?.review ?? 0,
+      accent: "border-t-amber-500 text-amber-600",
     },
     {
-      label: "Jadwal Bentrok",
-      value: 0,
-      unit: "Konflik",
-      icon: BadgeCheck,
-      iconBox: "bg-emerald-100 text-emerald-700",
-      bar: "bg-brand",
-      footer: (
-        <span className="inline-flex items-center gap-1.5 rounded-md bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800">
-          <CircleCheck className="size-3.5" /> Validasi otomatis aktif
-        </span>
-      ),
+      label: "Menunggu TTD",
+      value: stats?.waitingSignature ?? 0,
+      accent: "border-t-orange-500 text-orange-600",
+    },
+    {
+      label: "Perlu Revisi",
+      value: stats?.needsRevision ?? 0,
+      accent: "border-t-slate-700 text-slate-800",
+    },
+    {
+      label: "Disetujui",
+      value: stats?.approved ?? approvedToday ?? 0,
+      accent: "border-t-emerald-600 text-brand",
     },
   ];
 
   return (
-    <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
-      {cards.map(({ label, value, unit, icon: Icon, iconBox, bar, footer }) => (
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+      {cards.map((c) => (
         <div
-          key={label}
-          className="relative flex flex-col justify-between gap-4 overflow-hidden rounded-2xl border border-line bg-white px-6 pb-6 pt-5"
+          key={c.label}
+          className={`rounded-2xl border border-line border-t-4 ${c.accent} bg-white p-4 text-center shadow-xs`}
         >
-          <div className="flex items-start justify-between gap-3">
-            <p className="text-[13px] font-bold uppercase tracking-wide text-slate-600">
-              {label}
-            </p>
-            <span
-              className={`flex size-10 shrink-0 items-center justify-center rounded-xl ${iconBox}`}
-            >
-              <Icon className="size-5" />
-            </span>
-          </div>
-          <p className="flex items-baseline gap-2">
-            <span className="text-4xl font-extrabold tracking-tight">
-              {value}
-            </span>
-            <span className="text-sm font-medium text-slate-500">{unit}</span>
+          <p className="text-2xl font-extrabold tracking-tight sm:text-3xl">
+            {c.value}
           </p>
-          <div>{footer}</div>
-          <span className={`absolute inset-x-0 bottom-0 h-1 ${bar}`} />
+          <p className="mt-1 text-xs font-medium text-slate-500">{c.label}</p>
         </div>
       ))}
     </div>
