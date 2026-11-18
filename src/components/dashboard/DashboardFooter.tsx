@@ -1,3 +1,5 @@
+import logoLuminar from "../../assets/logo-luminar.png";
+
 const links = [
   "Panduan Peminjaman",
   "Kontak Helpdesk FILKOM",
@@ -10,8 +12,13 @@ export default function DashboardFooter() {
       <div className="mx-auto w-full max-w-[1400px] px-4 sm:px-6 lg:px-10">
         <div className="flex flex-col gap-6 py-10 md:flex-row md:items-center md:justify-between">
           <div className="max-w-md">
+            <img
+              src={logoLuminar}
+              alt="Luminar"
+              className="mb-3 h-8 w-auto object-contain"
+            />
             <p className="flex flex-wrap items-center gap-2">
-              <span className="text-xl font-bold text-brand">
+              <span className="text-lg font-bold text-brand">
                 FILKOM Universitas Brawijaya
               </span>
               <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">

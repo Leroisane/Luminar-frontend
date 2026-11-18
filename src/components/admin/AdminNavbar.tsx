@@ -1,4 +1,6 @@
 import { useState } from "react";
+import logoLuminar from "../../assets/logo-luminar.png";
+import iconLuminar from "../../assets/icon-luminar.png";
 import { useNavigate } from "react-router-dom";
 import {
   Bell,
@@ -7,7 +9,6 @@ import {
   ChevronDown,
   FileSpreadsheet,
   FileText,
-  Landmark,
   LogOut,
   Menu,
   Printer,
@@ -170,19 +171,18 @@ export default function AdminNavbar({ pendingCount, search, onSearch }: Props) {
           <button
             type="button"
             onClick={() => handleNavClick("dashboard")}
-            className="flex shrink-0 items-center gap-2.5 text-left cursor-pointer"
+            className="flex shrink-0 items-center cursor-pointer"
           >
-            <span className="flex size-10 aspect-square shrink-0 items-center justify-center rounded-xl bg-brand text-white shadow-sm">
-              <Landmark className="size-5" />
-            </span>
-            <span className="leading-tight whitespace-nowrap">
-              <span className="block text-base font-bold tracking-tight">
-                FILKOM Reserve
-              </span>
-              <span className="hidden text-[11px] font-medium text-slate-500 sm:block">
-                Admin Portal Sarpras &amp; Lab
-              </span>
-            </span>
+            <img
+              src={iconLuminar}
+              alt="Luminar"
+              className="size-8 object-contain sm:hidden"
+            />
+            <img
+              src={logoLuminar}
+              alt="Luminar"
+              className="hidden h-9 w-auto object-contain sm:block"
+            />
           </button>
 
           {/* Desktop nav */}

@@ -5,6 +5,7 @@ import { z } from "zod";
 import { Link, useNavigate } from "react-router-dom";
 import { registerApi } from "../api/authService";
 import { getApiErrorMessage } from "../api/axiosClient";
+import iconLuminar from "../assets/icon-luminar.png";
 
 const registerSchema = z
   .object({
@@ -65,6 +66,11 @@ export default function RegisterPage() {
     <div className="min-h-screen w-full bg-[#F8F9FA] text-[#121212] flex items-center justify-center p-4 font-sans">
       <div className="w-full max-w-md bg-white rounded-2xl border border-gray-200 shadow-sm p-8 space-y-6">
         <div className="space-y-1">
+          <img
+            src={iconLuminar}
+            alt="Logo Luminar"
+            className="mb-3 size-11 object-contain"
+          />
           <span className="inline-block px-2.5 py-1 bg-emerald-50 text-[#2E5B3C] text-xs font-bold rounded-md">
             Registrasi Mahasiswa
           </span>

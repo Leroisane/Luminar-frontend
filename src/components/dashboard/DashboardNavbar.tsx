@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { GraduationCap, LogOut, Menu, User, X } from "lucide-react";
 import { logoutApi } from "../../api/authService";
 import { useAuthStore } from "../../store/useAuthStore";
 import { cn } from "../../utils/helpers";
+import logoLuminar from "../../assets/logo-luminar.png";
+import iconLuminar from "../../assets/icon-luminar.png";
+import { LogOut, Menu, User, X } from "lucide-react";
 
 const links = [
   { id: "katalog", label: "Katalog", href: "#katalog" },
@@ -32,18 +34,17 @@ export default function DashboardNavbar() {
     <header className="sticky top-0 z-40 w-full border-b border-line bg-white/90 backdrop-blur">
       <div className="mx-auto flex h-[68px] w-full max-w-[1400px] items-center justify-between gap-4 px-4 sm:px-6 lg:px-10">
         {/* Brand */}
-        <a href="/" className="flex shrink-0 items-center gap-3">
-          <span className="flex size-10 aspect-square shrink-0 items-center justify-center rounded-lg bg-brand text-white">
-            <GraduationCap className="size-5" />
-          </span>
-          <span className="leading-tight whitespace-nowrap">
-            <span className="block text-lg font-bold tracking-tight">
-              FILKOM UB
-            </span>
-            <span className="hidden text-xs font-medium text-slate-600 sm:block">
-              Academic Facilities &amp; Equipment
-            </span>
-          </span>
+        <a href="/" className="flex shrink-0 items-center">
+          <img
+            src={iconLuminar}
+            alt="Luminar"
+            className="size-8 object-contain sm:hidden"
+          />
+          <img
+            src={logoLuminar}
+            alt="Luminar"
+            className="hidden h-9 w-auto object-contain sm:block"
+          />
         </a>
 
         {/* Desktop nav */}
