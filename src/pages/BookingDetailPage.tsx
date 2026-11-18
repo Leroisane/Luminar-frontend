@@ -31,7 +31,7 @@ export default function BookingDetailPage() {
       <div className="bg-white rounded-xl shadow p-6">
         <div className="flex items-center justify-between mb-4">
           <h1 className="text-xl font-bold text-gray-900">
-            {booking.ticket_code}
+            {booking.booking_no ?? booking.ticket_code ?? booking.id}
           </h1>
           <StatusBadge status={booking.status} />
         </div>
@@ -39,11 +39,11 @@ export default function BookingDetailPage() {
         <div className="grid grid-cols-2 gap-4 text-sm text-gray-700">
           <div>
             <p className="text-gray-400 text-xs uppercase mb-1">Ruangan</p>
-            <p>{booking.room?.name ?? "-"}</p>
+            <p>{booking.room_name ?? booking.room?.name ?? "-"}</p>
           </div>
           <div>
             <p className="text-gray-400 text-xs uppercase mb-1">Tanggal</p>
-            <p>{booking.date}</p>
+            <p>{booking.booking_date ?? booking.date ?? "-"}</p>
           </div>
           <div>
             <p className="text-gray-400 text-xs uppercase mb-1">Waktu</p>
@@ -51,7 +51,7 @@ export default function BookingDetailPage() {
           </div>
           <div>
             <p className="text-gray-400 text-xs uppercase mb-1">Lembaga</p>
-            <p>{booking.lembaga?.name ?? "-"}</p>
+            <p>{booking.lembaga_name ?? booking.lembaga?.name ?? "-"}</p>
           </div>
           <div className="col-span-2">
             <p className="text-gray-400 text-xs uppercase mb-1">Tujuan Kegiatan</p>

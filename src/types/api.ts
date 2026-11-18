@@ -159,8 +159,10 @@ export interface Booking {
   updated_at?: string;
   room_id?: string;
   room?: Room;
+  room_name?: string;
   lembaga_id?: string;
   lembaga?: Lembaga;
+  lembaga_name?: string;
   user_id?: string;
   user?: AuthUser;
   requester_name?: string;

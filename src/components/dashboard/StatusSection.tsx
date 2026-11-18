@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { AlertCircle, Edit3, FileText, X, XCircle } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
-import StatusBadge from "./StatusBadge";
+import StatusBadge from "../ui/StatusBadge";
 import {
   useMyBookingsList,
   type BackendBookingItem,
@@ -22,10 +22,11 @@ interface StatusSectionProps {
 
 const statusTabs = [
   { key: "all", label: "Semua" },
-  { key: "pending", label: "Menunggu" },
+  { key: "diajukan", label: "Menunggu" },
+  { key: "direview", label: "Direview" },
   { key: "perlu_revisi", label: "Perlu Revisi" },
-  { key: "approved", label: "Disetujui" },
-  { key: "rejected", label: "Ditolak" },
+  { key: "disetujui", label: "Disetujui" },
+  { key: "ditolak", label: "Ditolak" },
 ];
 
 export default function StatusSection({
@@ -144,11 +145,15 @@ export default function StatusSection({
       ) : (
         <div className="mt-6 space-y-4">
           {bookings.map((b) => {
-            const raw = b.rawStatus.toLowerCase();
-            const isApproved =
-              raw.includes("approve") || raw.includes("setuju");
-            const isRevision = raw.includes("revisi");
-            const isPending = raw === "pending" || raw === "submitted";
+            const raw = (b.rawStatus || "").toLowerCase();
+            const isRevision = raw === "perlu_revisi";
+            const isCancelable = [
+              "diajukan",
+              "direview",
+              "perlu_revisi",
+              "pending",
+              "submitted",
+            ].includes(raw);
 
             return (
               <article
@@ -160,12 +165,7 @@ export default function StatusSection({
                     <span className="rounded-md bg-slate-100 px-2.5 py-1 font-mono text-xs font-bold text-slate-700">
                       {b.ticketId}
                     </span>
-                    <StatusBadge
-                      tone={isApproved ? "green" : "amber"}
-                      dot={false}
-                    >
-                      {b.status}
-                    </StatusBadge>
+                    <StatusBadge status={b.rawStatus} />
                     <span className="text-xs text-slate-500">
                       {b.lembagaName}
                     </span>
@@ -244,7 +244,7 @@ export default function StatusSection({
                     </button>
                   )}
 
-                  {isPending && (
+                  {isCancelable && (
                     <button
                       type="button"
                       onClick={() => void handleCancel(b)}

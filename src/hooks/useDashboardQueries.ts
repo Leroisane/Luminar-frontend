@@ -58,9 +58,16 @@ export function useMyBookings(status?: string) {
   return useQuery<Booking[]>({
     queryKey: ["my-bookings", status],
     queryFn: async () => {
-      const res = await getMyBookingsApi(status ? { status } : undefined);
-      const payload = res?.data;
-      return Array.isArray(payload) ? payload : [];
+      const res = await getMyBookingsApi(
+        status && status !== "all" ? { status } : undefined,
+      );
+      const raw = res?.data as unknown;
+      if (Array.isArray(raw)) return raw;
+      if (raw && typeof raw === "object" && "items" in raw) {
+        const items = (raw as { items: unknown }).items;
+        if (Array.isArray(items)) return items as Booking[];
+      }
+      return [];
     },
   });
 }
@@ -118,16 +125,21 @@ export function useMyBookingsList(status?: string) {
       const res = await getMyBookingsApi(
         status && status !== "all" ? { status } : undefined,
       );
-      const payload = res?.data;
-      const arr = Array.isArray(payload) ? payload : [];
+      const raw = res?.data as unknown;
+      const arr: Booking[] = Array.isArray(raw)
+        ? (raw as Booking[])
+        : raw && typeof raw === "object" && "items" in raw
+          ? (((raw as { items: unknown }).items as Booking[]) ?? [])
+          : [];
+
       return arr.map((b): BackendBookingItem => ({
         id: b.id,
         ticketId: b.booking_no ?? b.ticket_code ?? b.id,
         rawStatus: b.status,
         status: b.status,
-        lembagaName: b.lembaga?.name ?? "-",
-        schedule: `${b.booking_date ?? b.date} ${b.start_time}–${b.end_time}`,
-        resources: b.room?.name ?? "-",
+        lembagaName: b.lembaga_name ?? b.lembaga?.name ?? "-",
+        schedule: `${b.booking_date ?? b.date ?? "-"} ${b.start_time ?? ""}–${b.end_time ?? ""}`,
+        resources: b.room_name ?? b.room?.name ?? "-",
         activity: b.agenda ?? b.purpose ?? "-",
         agenda: b.agenda,
         programKerja: b.program_kerja,
