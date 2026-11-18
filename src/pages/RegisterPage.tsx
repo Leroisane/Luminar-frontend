@@ -10,11 +10,11 @@ import iconLuminar from "../assets/icon-luminar.png";
 const registerSchema = z
   .object({
     name: z.string().min(3, "Nama lengkap minimal 3 karakter"),
-    nim: z.string().min(10, "NIM tidak valid"),
+    nim: z.string().min(5, "NIM minimal 5 karakter").max(30, "NIM maksimal 30 karakter"),
     prodi: z.string().min(1, "Pilih program studi"),
-    phone: z.string().min(8, "Nomor WhatsApp tidak valid"),
+    phone: z.string().min(8, "Nomor WhatsApp tidak valid").max(20, "Nomor terlalu panjang").optional().or(z.literal("")),
     email: z.string().email("Format email tidak valid"),
-    password: z.string().min(6, "Password minimal 6 karakter"),
+    password: z.string().min(8, "Password minimal 8 karakter"),
     confirmPassword: z.string(),
   })
   .refine((data) => data.password === data.confirmPassword, {
@@ -56,6 +56,8 @@ export default function RegisterPage() {
         email: data.email.trim(),
         password: data.password,
         confirm_password: data.confirmPassword,
+        phone: data.phone?.trim() || undefined,
+        program_studi: data.prodi.trim(),
       });
       navigate("/login", { replace: true, state: { registered: true } });
     } catch (err: unknown) {
@@ -185,7 +187,7 @@ export default function RegisterPage() {
             </label>
             <input
               type="password"
-              placeholder="Minimal 6 karakter"
+              placeholder="Minimal 8 karakter"
               {...register("password")}
               className="w-full px-3.5 py-2 text-sm border border-gray-300 rounded-xl focus:outline-none focus:border-[#2E5B3C]"
             />

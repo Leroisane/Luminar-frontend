@@ -10,9 +10,10 @@ export interface RegisterPayload {
   name: string;
   email: string;
   password: string;
-  confirm_password?: string;
+  confirm_password: string;
   nim?: string;
   phone?: string;
+  program_studi?: string;
 }
 
 export const loginApi = async (

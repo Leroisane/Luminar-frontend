@@ -114,14 +114,26 @@ axiosClient.interceptors.response.use(
 
 // Helper ekstrak pesan error dari response backend
 export function getApiErrorMessage(err: unknown): string {
-  const axiosErr = err as AxiosError<{ error?: string; message?: string }>;
+  const axiosErr = err as AxiosError<{
+    error?: string;
+    message?: string;
+    errors?: Array<{ field: string; message: string }>;
+  }>;
   const status = axiosErr?.response?.status;
-  const serverErr =
-    axiosErr?.response?.data?.error || axiosErr?.response?.data?.message;
+  const data = axiosErr?.response?.data;
 
+  // Show field-level validation errors if present
+  if (data?.errors && Array.isArray(data.errors) && data.errors.length > 0) {
+    const details = data.errors
+      .map((e) => `${e.field}: ${e.message}`)
+      .join(", ");
+    return `${data.message || "Validasi gagal"} — ${details}`;
+  }
+
+  const serverErr = data?.error || data?.message;
   if (serverErr) return serverErr;
   if (status === 403) return "Akses ditolak (Forbidden).";
-  if (status === 404) return "Data tidak ditemukan (404).";
+  if (status === 404) return "Endpoint tidak ditemukan (404). Periksa konfigurasi API.";
   if (status === 429) return "Terlalu banyak permintaan. Tunggu sebentar.";
   return "Gagal terhubung ke server Luminar.";
 }
