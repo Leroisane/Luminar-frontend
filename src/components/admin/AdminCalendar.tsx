@@ -209,7 +209,7 @@ export default function AdminCalendar() {
 
     setIsSavingBlock(true);
     try {
-      await axiosClient.post("/api/v1/admin/events/block", newBlock);
+      await axiosClient.post("/admin/events/block", newBlock);
     } catch {
       // Lanjutkan penyimpanan lokal saat backend offline
     } finally {

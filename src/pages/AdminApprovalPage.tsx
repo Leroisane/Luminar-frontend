@@ -21,8 +21,16 @@ import AdminNavbar from "../components/admin/AdminNavbar";
 import AdminStatsCards from "../components/admin/AdminStatsCards";
 import AdminCalendar from "../components/admin/AdminCalendar";
 import AdminTableSection from "../components/admin/AdminTableSection";
-import { exportAdminBookingsExcelApi } from "../api/adminService";
-import { axiosClient, getApiErrorMessage } from "../api/axiosClient";
+import {
+  exportAdminBookingsExcelApi,
+  createAdminRoomApi,
+  deleteAdminRoomApi,
+  createAdminLembagaApi,
+  deleteAdminLembagaApi,
+  createAdminItemApi,
+  deleteAdminItemApi,
+} from "../api/adminService";
+import { getApiErrorMessage } from "../api/axiosClient";
 import {
   useAdminAuditLogs,
   useAdminBookingStats,
@@ -138,11 +146,12 @@ export default function AdminApprovalPage() {
     if (isSavingMaster) return;
     setIsSavingMaster(true);
     try {
-      await axiosClient.post("/api/v1/admin/rooms", {
+      await createAdminRoomApi({
         name: newRoom.name.trim(),
-        building: newRoom.building.trim(),
+        location: newRoom.building.trim(),
         capacity: Number(newRoom.capacity) || 30,
         description: newRoom.description.trim() || undefined,
+        status: "tersedia",
       });
       setNewRoom({ name: "", building: "", capacity: "40", description: "" });
       await queryClient.invalidateQueries({ queryKey: ["admin", "rooms"] });
@@ -161,7 +170,13 @@ export default function AdminApprovalPage() {
   ) => {
     if (!window.confirm(`Hapus ${label}?`)) return;
     try {
-      await axiosClient.delete(`/api/v1/admin/${endpoint}/${String(id)}`);
+      if (endpoint === "rooms") {
+        await deleteAdminRoomApi(String(id));
+      } else if (endpoint === "lembaga") {
+        await deleteAdminLembagaApi(String(id));
+      } else {
+        await deleteAdminItemApi(String(id));
+      }
       await queryClient.invalidateQueries({ queryKey: ["admin", endpoint] });
       showToast(`${label} berhasil dihapus.`);
     } catch (err: unknown) {
@@ -174,11 +189,12 @@ export default function AdminApprovalPage() {
     if (isSavingMaster) return;
     setIsSavingMaster(true);
     try {
-      await axiosClient.post("/api/v1/admin/items", {
+      await createAdminItemApi({
         name: newItem.name.trim(),
-        stock: Number(newItem.stock) || 1,
-        location: newItem.location.trim(),
+        category: "Inventaris",
+        stock_total: Number(newItem.stock) || 1,
         description: newItem.description.trim() || undefined,
+        status: "tersedia",
       });
       setNewItem({
         name: "",
@@ -200,10 +216,8 @@ export default function AdminApprovalPage() {
     if (isSavingMaster) return;
     setIsSavingMaster(true);
     try {
-      await axiosClient.post("/api/v1/admin/lembaga", {
+      await createAdminLembagaApi({
         name: newLembaga.name.trim(),
-        code: newLembaga.code.trim() || undefined,
-        description: newLembaga.description.trim() || undefined,
       });
       setNewLembaga({ name: "", code: "", description: "" });
       await queryClient.invalidateQueries({ queryKey: ["admin", "lembaga"] });

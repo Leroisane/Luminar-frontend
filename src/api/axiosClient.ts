@@ -18,6 +18,11 @@ export const axiosClient = axios.create({
 
 // Sisipkan access_token di setiap request yang terproteksi
 axiosClient.interceptors.request.use((config: InternalAxiosRequestConfig) => {
+  // Strip duplicate /api/v1 prefix if inadvertently provided in request path
+  if (config.url && config.url.startsWith("/api/v1/")) {
+    config.url = config.url.replace(/^\/api\/v1/, "");
+  }
+
   const token = localStorage.getItem("access_token");
   if (token && config.headers) {
     config.headers.Authorization = `Bearer ${token}`;
