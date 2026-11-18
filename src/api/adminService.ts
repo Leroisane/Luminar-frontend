@@ -66,31 +66,42 @@ export const updateBookingStatusApi = async (
   return res.data;
 };
 
+export interface FinalLetterPayload {
+  final_letter_url: string;
+}
+
 export const uploadFinalLetterApi = async (
   id: string | number,
-  file: File,
-  fieldName = "file",
-  onProgress?: (percent: number) => void,
+  payload: FinalLetterPayload | string,
 ): Promise<ApiResponse<Booking>> => {
-  const formData = new FormData();
-  formData.append(fieldName, file);
+  const body =
+    typeof payload === "string" ? { final_letter_url: payload } : payload;
   const res = await axiosClient.post<ApiResponse<Booking>>(
     `/admin/room-bookings/${id}/final-letter`,
-    formData,
-    {
-      headers: { "Content-Type": "multipart/form-data" },
-      onUploadProgress: (evt) => {
-        if (onProgress && evt.total) {
-          onProgress(Math.round((evt.loaded * 100) / evt.total));
-        }
-      },
-    },
+    body,
   );
   return res.data;
 };
 
+export interface AdminManualBookingPayload {
+  requester_name: string;
+  requester_contact: string;
+  requester_nim?: string;
+  requester_prodi?: string;
+  lembaga_id: string;
+  program_kerja: string;
+  agenda: string;
+  room_id: string;
+  booking_date: string; // YYYY-MM-DD
+  start_time: string;   // HH:MM
+  end_time: string;     // HH:MM
+  participants: number;
+  purpose?: string;
+  document_url?: string;
+}
+
 export const createManualBookingApi = async (
-  payload: Record<string, unknown>,
+  payload: AdminManualBookingPayload,
 ): Promise<ApiResponse<Booking>> => {
   const res = await axiosClient.post<ApiResponse<Booking>>(
     "/admin/room-bookings",
@@ -185,8 +196,7 @@ export const deleteAdminRoomApi = async (
 };
 
 // --- Master Items Admin ---
-// NOTE: Backend routes for /admin/items are not yet registered in main.go.
-// These functions are correct and ready — backend just needs the routes added.
+// Backend routes for /admin/items are fully registered and active.
 // Backend DTO: { name (required), category (required), description?, stock_total (required), status?, status_note? }
 
 export interface ItemPayload {

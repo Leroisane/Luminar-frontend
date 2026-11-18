@@ -7,6 +7,7 @@ import type {
   Lembaga,
   Booking,
   Paginated,
+  CalendarEventResponse,
 } from "../types/api";
 
 // --- Katalog Ruang, Barang, Lembaga & Slot Waktu ---
@@ -35,6 +36,21 @@ export const getRoomAvailabilityApi = async (
   const res = await axiosClient.get<ApiResponse<RoomSlot[]>>(
     `/rooms/${id}/availability`,
     { params: { date } },
+  );
+  return res.data;
+};
+
+export const getCalendarEventsApi = async (
+  month: string, // format YYYY-MM
+  roomId?: string,
+): Promise<ApiResponse<CalendarEventResponse[]>> => {
+  const params: Record<string, string> = { month };
+  if (roomId && roomId !== "all") {
+    params.room_id = roomId;
+  }
+  const res = await axiosClient.get<ApiResponse<CalendarEventResponse[]>>(
+    "/schedule/calendar",
+    { params },
   );
   return res.data;
 };

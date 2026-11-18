@@ -6,8 +6,17 @@ import {
   getMyBookingsApi,
   getBookingDetailApi,
   getRoomAvailabilityApi,
+  getCalendarEventsApi,
 } from "../api/facilityService";
-import type { Room, Item, Lembaga, Booking, RoomSlot, Paginated } from "../types/api";
+import type {
+  Room,
+  Item,
+  Lembaga,
+  Booking,
+  RoomSlot,
+  Paginated,
+  CalendarEventResponse,
+} from "../types/api";
 
 /** Ekstrak array dari response (handle both wrapped & paginated) */
 function extractArray<T>(res: { data?: T[] | Paginated<T> } | T[] | Paginated<T>): T[] {
@@ -95,6 +104,18 @@ export function useRoomAvailability(
       return Array.isArray(payload) ? payload : [];
     },
     enabled: !!roomId && !!date,
+  });
+}
+
+export function useMonthCalendarEvents(month: string, roomId?: string) {
+  return useQuery<CalendarEventResponse[]>({
+    queryKey: ["schedule-calendar", month, roomId],
+    queryFn: async () => {
+      const res = await getCalendarEventsApi(month, roomId);
+      const payload = res?.data;
+      return Array.isArray(payload) ? payload : [];
+    },
+    enabled: !!month,
   });
 }
 

@@ -108,12 +108,12 @@ export function useUpdateBookingStatus() {
   });
 }
 
-/** Upload surat akhir (PDF) dengan progress callback */
-export function useUploadFinalLetter(onProgress?: (pct: number) => void) {
+/** Upload / simpan URL surat akhir digital */
+export function useUploadFinalLetter() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, file }: { id: string; file: File }) =>
-      uploadFinalLetterApi(id, file, "file", onProgress),
+    mutationFn: ({ id, finalLetterUrl }: { id: string; finalLetterUrl: string }) =>
+      uploadFinalLetterApi(id, finalLetterUrl),
     onSuccess: (_data, variables) => {
       void qc.invalidateQueries({
         queryKey: ["admin", "booking-detail", variables.id],

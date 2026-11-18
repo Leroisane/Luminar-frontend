@@ -7,7 +7,6 @@ import {
   FileText,
   Plus,
   Search,
-  Upload,
   X,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -33,30 +32,215 @@ interface Props {
 
 const statusOptions = [
   { value: "all", label: "Semua Status" },
-  { value: "pending", label: "Menunggu Review" },
-  { value: "review", label: "Sedang Direview" },
+  { value: "diajukan", label: "Diajukan" },
+  { value: "direview", label: "Sedang Direview" },
   { value: "perlu_revisi", label: "Perlu Revisi" },
-  { value: "approved", label: "Disetujui" },
-  { value: "rejected", label: "Ditolak" },
-  { value: "cancelled", label: "Dibatalkan" },
+  { value: "menunggu_ttd", label: "Menunggu TTD" },
+  { value: "disetujui", label: "Disetujui" },
+  { value: "ditolak", label: "Ditolak" },
+  { value: "dibatalkan", label: "Dibatalkan" },
+];
+
+export interface StatusActionOption {
+  value:
+    | "review"
+    | "request_revision"
+    | "approve"
+    | "upload_final_letter"
+    | "reject"
+    | "cancel";
+  label: string;
+  description: string;
+  requiresNote?: boolean;
+}
+
+export function getAllowedActionsForStatus(
+  rawStatus?: string,
+): StatusActionOption[] {
+  const s = (rawStatus ?? "").toLowerCase();
+
+  switch (s) {
+    case "diajukan":
+    case "pending":
+      return [
+        {
+          value: "review",
+          label: "Mulai Review (Ulas Permohonan)",
+          description: "Mengubah status menjadi 'Sedang Direview'.",
+        },
+        {
+          value: "request_revision",
+          label: "Minta Revisi",
+          description:
+            "Meminta pemohon memperbaiki berkas/data (wajib catatan min 5 karakter).",
+          requiresNote: true,
+        },
+        {
+          value: "reject",
+          label: "Tolak Pengajuan",
+          description:
+            "Menolak permohonan peminjaman ruangan (wajib alasan penolakan min 5 karakter).",
+          requiresNote: true,
+        },
+        {
+          value: "cancel",
+          label: "Batalkan Peminjaman",
+          description: "Membatalkan peminjaman ruangan ini.",
+        },
+      ];
+
+    case "direview":
+    case "review":
+      return [
+        {
+          value: "approve",
+          label: "Setujui Permohonan (Lanjut Menunggu TTD)",
+          description:
+            "Menyetujui permohonan dan melanjutkan ke proses penandatanganan surat resmi.",
+        },
+        {
+          value: "request_revision",
+          label: "Minta Revisi",
+          description:
+            "Meminta pemohon memperbaiki berkas/data (wajib catatan min 5 karakter).",
+          requiresNote: true,
+        },
+        {
+          value: "reject",
+          label: "Tolak Pengajuan",
+          description:
+            "Menolak permohonan peminjaman ruangan (wajib alasan penolakan min 5 karakter).",
+          requiresNote: true,
+        },
+        {
+          value: "cancel",
+          label: "Batalkan Peminjaman",
+          description: "Membatalkan peminjaman ruangan ini.",
+        },
+      ];
+
+    case "menunggu_ttd":
+      return [
+        {
+          value: "upload_final_letter",
+          label: "Unggah Link Surat Final (Persetujuan Lengkap)",
+          description:
+            "Memasukkan link Google Drive surat izin resmi yang telah ditandatangani.",
+        },
+        {
+          value: "reject",
+          label: "Tolak Pengajuan",
+          description:
+            "Menolak permohonan peminjaman ruangan (wajib alasan penolakan min 5 karakter).",
+          requiresNote: true,
+        },
+        {
+          value: "cancel",
+          label: "Batalkan Peminjaman",
+          description: "Membatalkan peminjaman ruangan ini.",
+        },
+      ];
+
+    case "perlu_revisi":
+      return [
+        {
+          value: "reject",
+          label: "Tolak Pengajuan",
+          description:
+            "Menolak permohonan yang belum kunjung direvisi (wajib alasan min 5 karakter).",
+          requiresNote: true,
+        },
+        {
+          value: "cancel",
+          label: "Batalkan Peminjaman",
+          description: "Membatalkan peminjaman ruangan ini.",
+        },
+      ];
+
+    case "disetujui":
+    case "approved":
+      return [
+        {
+          value: "cancel",
+          label: "Batalkan Peminjaman",
+          description: "Membatalkan peminjaman yang sebelumnya sudah disetujui.",
+        },
+      ];
+
+    case "ditolak":
+    case "rejected":
+    case "dibatalkan":
+    case "cancelled":
+    default:
+      return [];
+  }
+}
+
+const OPERATIONAL_TIME_SLOTS = [
+  "07:00",
+  "07:30",
+  "08:00",
+  "08:30",
+  "09:00",
+  "09:30",
+  "10:00",
+  "10:30",
+  "11:00",
+  "11:30",
+  "12:00",
+  "12:30",
+  "13:00",
+  "13:30",
+  "14:00",
+  "14:30",
+  "15:00",
+  "15:30",
+  "16:00",
+  "16:30",
+  "17:00",
+  "17:30",
+  "18:00",
+  "18:30",
+  "19:00",
+  "19:30",
+  "20:00",
+  "20:30",
+  "21:00",
 ];
 
 function getStatusBadgeStyle(raw: string): { label: string; cls: string } {
-  const s = raw.toLowerCase();
-  if (s.includes("approve") || s.includes("setuju"))
+  const s = (raw ?? "").toLowerCase();
+  if (s === "disetujui" || s.includes("approve") || s.includes("setuju"))
     return { label: "Disetujui", cls: "bg-emerald-50 text-brand" };
-  if (s.includes("revisi"))
+  if (s === "perlu_revisi" || s.includes("revisi"))
     return { label: "Perlu Revisi", cls: "bg-amber-50 text-amber-700" };
-  if (s.includes("ttd") || s.includes("sign"))
+  if (s === "menunggu_ttd" || s.includes("ttd") || s.includes("sign"))
     return { label: "Menunggu TTD", cls: "bg-orange-50 text-orange-700" };
-  if (s.includes("reject") || s.includes("tolak"))
+  if (s === "ditolak" || s.includes("reject") || s.includes("tolak"))
     return { label: "Ditolak", cls: "bg-red-50 text-red-600" };
-  if (s.includes("cancel") || s.includes("batal"))
+  if (s === "dibatalkan" || s.includes("cancel") || s.includes("batal"))
     return { label: "Dibatalkan", cls: "bg-slate-100 text-slate-500" };
-  if (s.includes("review"))
-    return { label: "Review", cls: "bg-sky-50 text-sky-700" };
-  return { label: "Menunggu", cls: "bg-blue-50 text-blue-700" };
+  if (s === "direview" || s.includes("review"))
+    return { label: "Sedang Direview", cls: "bg-sky-50 text-sky-700" };
+  return { label: "Diajukan", cls: "bg-blue-50 text-blue-700" };
 }
+
+const initialManualForm = {
+  applicant_name: "",
+  contact: "",
+  nim: "",
+  prodi: "",
+  lembaga_id: "",
+  program_kerja: "",
+  agenda: "",
+  room_id: "",
+  date: new Date().toISOString().split("T")[0],
+  participants: "1",
+  start_time: "08:00",
+  end_time: "12:00",
+  purpose: "Kegiatan",
+  document_url: "",
+};
 
 export default function AdminTableSection({ globalSearch }: Props) {
   const queryClient = useQueryClient();
@@ -83,25 +267,12 @@ export default function AdminTableSection({ globalSearch }: Props) {
   );
   const [nextAction, setNextAction] = useState("");
   const [actionNote, setActionNote] = useState("");
-  const [finalFile, setFinalFile] = useState<File | null>(null);
+  const [finalLetterUrl, setFinalLetterUrl] = useState("");
   const [isSavingStatus, setIsSavingStatus] = useState(false);
 
   // Modal Tambah Manual Admin
   const [manualModalOpen, setManualModalOpen] = useState(false);
-  const [manualForm, setManualForm] = useState({
-    applicant_name: "",
-    contact: "",
-    lembaga_id: "",
-    program_kerja: "",
-    agenda: "",
-    room_id: "",
-    date: "",
-    participants: "1",
-    start_time: "08:00",
-    end_time: "12:00",
-    purpose: "Kegiatan",
-    document_url: "",
-  });
+  const [manualForm, setManualForm] = useState(initialManualForm);
   const [isSavingManual, setIsSavingManual] = useState(false);
 
   const [toast, setToast] = useState<string | null>(null);
@@ -123,14 +294,30 @@ export default function AdminTableSection({ globalSearch }: Props) {
 
     try {
       if (nextAction === "upload_final_letter") {
-        if (!finalFile) {
-          throw new Error("Pilih file PDF surat final terlebih dahulu.");
+        const url = finalLetterUrl.trim();
+        if (
+          !url ||
+          (!url.startsWith("http://") && !url.startsWith("https://"))
+        ) {
+          throw new Error(
+            "Link surat final wajib diisi dengan URL valid (http:// atau https://).",
+          );
         }
-        await uploadFinalLetterApi(selectedReq.backendId, finalFile);
+        await uploadFinalLetterApi(selectedReq.backendId, url);
       } else {
+        const note = actionNote.trim();
+        if (
+          (nextAction === "request_revision" || nextAction === "reject") &&
+          note.length < 5
+        ) {
+          throw new Error(
+            "Catatan wajib diisi minimal 5 karakter untuk aksi revisi dan penolakan.",
+          );
+        }
         await updateBookingStatusApi(selectedReq.backendId, {
-          action: nextAction as import("../../api/adminService").UpdateBookingStatusPayload["action"],
-          note: actionNote.trim() || undefined,
+          action:
+            nextAction as import("../../api/adminService").UpdateBookingStatusPayload["action"],
+          note: note || undefined,
         });
       }
 
@@ -138,7 +325,7 @@ export default function AdminTableSection({ globalSearch }: Props) {
       setSelectedReq(null);
       setNextAction("");
       setActionNote("");
-      setFinalFile(null);
+      setFinalLetterUrl("");
       showToast("Status pengajuan berhasil diperbarui.");
     } catch (err: unknown) {
       setErrorMsg(err instanceof Error ? err.message : getApiErrorMessage(err));
@@ -164,25 +351,64 @@ export default function AdminTableSection({ globalSearch }: Props) {
     setErrorMsg(null);
 
     try {
+      const applicantName = manualForm.applicant_name.trim();
+      const contact = manualForm.contact.trim();
+      const programKerja = manualForm.program_kerja.trim();
+      const agenda = manualForm.agenda.trim();
+      const docUrl = manualForm.document_url.trim();
+
+      if (applicantName.length < 3) {
+        throw new Error("Nama pemohon wajib diisi minimal 3 karakter.");
+      }
+      if (contact.length < 5) {
+        throw new Error("Kontak pemohon wajib diisi minimal 5 karakter.");
+      }
+      if (!manualForm.lembaga_id) {
+        throw new Error("Pilih lembaga terlebih dahulu.");
+      }
+      if (!manualForm.room_id) {
+        throw new Error("Pilih ruangan terlebih dahulu.");
+      }
+      if (programKerja.length < 3) {
+        throw new Error("Program kerja wajib diisi minimal 3 karakter.");
+      }
+      if (agenda.length < 3) {
+        throw new Error("Agenda acara wajib diisi minimal 3 karakter.");
+      }
+      if (manualForm.start_time >= manualForm.end_time) {
+        throw new Error("Waktu selesai harus setelah waktu mulai.");
+      }
+      if (
+        docUrl &&
+        !docUrl.startsWith("http://") &&
+        !docUrl.startsWith("https://")
+      ) {
+        throw new Error(
+          "Link dokumen harus berupa URL valid dengan awalan http:// atau https://",
+        );
+      }
+
       await createManualBookingApi({
-        applicant_name: manualForm.applicant_name.trim(),
-        contact: manualForm.contact.trim(),
-        lembaga_id: Number(manualForm.lembaga_id) || manualForm.lembaga_id,
-        program_kerja: manualForm.program_kerja.trim(),
-        agenda: manualForm.agenda.trim(),
-        activity_name: manualForm.agenda.trim(),
-        room_id: Number(manualForm.room_id) || manualForm.room_id,
-        date: manualForm.date,
-        participants: Number(manualForm.participants) || 1,
+        requester_name: applicantName,
+        requester_contact: contact,
+        requester_nim: manualForm.nim.trim() || undefined,
+        requester_prodi: manualForm.prodi.trim() || undefined,
+        lembaga_id: String(manualForm.lembaga_id),
+        program_kerja: programKerja,
+        agenda: agenda,
+        room_id: String(manualForm.room_id),
+        booking_date: manualForm.date,
         start_time: manualForm.start_time,
         end_time: manualForm.end_time,
-        purpose: manualForm.purpose,
-        document_url: manualForm.document_url.trim() || undefined,
+        participants: Number(manualForm.participants) || 1,
+        purpose: manualForm.purpose.trim() || "Kegiatan",
+        document_url: docUrl || undefined,
       });
 
       await queryClient.invalidateQueries({ queryKey: ["admin"] });
       setManualModalOpen(false);
-      showToast("Reservasi manual admin berhasil disimpan.");
+      setManualForm(initialManualForm);
+      showToast("Peminjaman manual admin berhasil disimpan.");
     } catch (err: unknown) {
       setErrorMsg(getApiErrorMessage(err));
     } finally {
@@ -289,7 +515,7 @@ export default function AdminTableSection({ globalSearch }: Props) {
                       setSelectedReq(r);
                       setNextAction("");
                       setActionNote("");
-                      setFinalFile(null);
+                      setFinalLetterUrl("");
                     }}
                     className="cursor-pointer transition hover:bg-emerald-50/40"
                   >
@@ -504,76 +730,125 @@ export default function AdminTableSection({ globalSearch }: Props) {
             </dl>
 
             {/* Form Ubah Status */}
-            <form
-              onSubmit={(e) => void handleSaveStatus(e)}
-              className="mt-5 border-t border-line pt-4 text-xs"
-            >
-              <label className="mb-1.5 block font-bold text-slate-700">
-                Ubah Status
-              </label>
-              <select
-                value={nextAction}
-                onChange={(e) => setNextAction(e.target.value)}
-                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 outline-none focus:border-brand"
-              >
-                <option value="">-- Pilih Status --</option>
-                <option value="review">Review</option>
-                <option value="perlu_revisi">Minta Revisi</option>
-                <option value="approve">Setujui</option>
-                <option value="upload_final_letter">Upload Surat Final</option>
-                <option value="hand_over">
-                  Serah Terima Kunci (Hand Over)
-                </option>
-                <option value="return">Selesai / Pengembalian (Return)</option>
-                <option value="reject">Tolak</option>
-                <option value="cancel">Batalkan</option>
-              </select>
+            {(() => {
+              const allowedActions = getAllowedActionsForStatus(
+                selectedReq.rawStatus,
+              );
+              const selectedAction = allowedActions.find(
+                (a) => a.value === nextAction,
+              );
 
-              {(nextAction === "perlu_revisi" || nextAction === "reject") && (
-                <textarea
-                  required
-                  rows={3}
-                  value={actionNote}
-                  onChange={(e) => setActionNote(e.target.value)}
-                  placeholder={
-                    nextAction === "perlu_revisi"
-                      ? "Tuliskan poin revisi yang harus diperbaiki pemohon..."
-                      : "Tuliskan alasan penolakan..."
-                  }
-                  className="mt-2.5 w-full rounded-xl border border-slate-300 px-3 py-2 outline-none focus:border-brand"
-                />
-              )}
-
-              {nextAction === "upload_final_letter" && (
-                <label className="mt-2.5 flex items-center justify-center gap-2 rounded-xl border border-dashed border-brand/50 bg-emerald-50/50 p-3 font-semibold text-brand cursor-pointer">
-                  <Upload className="size-4" />
-                  <span>
-                    {finalFile
-                      ? finalFile.name
-                      : "Pilih File PDF Surat Final Bertanda Tangan"}
-                  </span>
-                  <input
-                    type="file"
-                    accept=".pdf"
-                    onChange={(e) => setFinalFile(e.target.files?.[0] ?? null)}
-                    className="hidden"
-                  />
-                </label>
-              )}
-
-              <div className="mt-4 flex items-center justify-between">
-                <span className="text-[11px] text-slate-400">
-                  Pilih action dan klik simpan
-                </span>
-                <button
-                  type="submit"
-                  disabled={!nextAction || isSavingStatus}
-                  className="rounded-xl bg-brand px-4 py-2 font-semibold text-white hover:bg-brand-dark disabled:opacity-40 cursor-pointer"
+              return (
+                <form
+                  onSubmit={(e) => void handleSaveStatus(e)}
+                  className="mt-5 border-t border-line pt-4 text-xs"
                 >
-                  {isSavingStatus ? "Menyimpan..." : "Simpan Status"}
-                </button>
-              </div>
-            </form>
+                  <label className="mb-1.5 block font-bold text-slate-700">
+                    Ubah Status Peminjaman
+                  </label>
+
+                  {allowedActions.length === 0 ? (
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-slate-600">
+                      <p className="font-semibold text-slate-700">
+                        Status Akhir (Terminal)
+                      </p>
+                      <p className="mt-0.5 text-[11px] text-slate-500">
+                        Peminjaman dengan status ini telah selesai diproses dan
+                        tidak memiliki aksi transisi lanjutan.
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      <select
+                        value={nextAction}
+                        onChange={(e) => {
+                          setNextAction(e.target.value);
+                          setActionNote("");
+                          setFinalLetterUrl("");
+                        }}
+                        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 outline-none focus:border-brand cursor-pointer"
+                      >
+                        <option value="">-- Pilih Aksi Status --</option>
+                        {allowedActions.map((act) => (
+                          <option key={act.value} value={act.value}>
+                            {act.label}
+                          </option>
+                        ))}
+                      </select>
+
+                      {selectedAction && (
+                        <p className="mt-1.5 text-[11px] text-slate-500">
+                          ℹ️ {selectedAction.description}
+                        </p>
+                      )}
+
+                      {(nextAction === "request_revision" ||
+                        nextAction === "reject") && (
+                        <div className="mt-3">
+                          <label className="mb-1 block font-semibold text-slate-700">
+                            {nextAction === "request_revision"
+                              ? "Poin Revisi untuk Pemohon (Wajib, Minimal 5 Karakter) *"
+                              : "Alasan Penolakan (Wajib, Minimal 5 Karakter) *"}
+                          </label>
+                          <textarea
+                            required
+                            minLength={5}
+                            rows={3}
+                            value={actionNote}
+                            onChange={(e) => setActionNote(e.target.value)}
+                            placeholder={
+                              nextAction === "request_revision"
+                                ? "Jelaskan poin perbaikan yang harus diperbaiki oleh pemohon..."
+                                : "Jelaskan alasan permohonan peminjaman ruangan ini ditolak..."
+                            }
+                            className="w-full rounded-xl border border-slate-300 px-3 py-2 outline-none focus:border-brand"
+                          />
+                          <p className="mt-1 text-[11px] text-slate-400">
+                            {actionNote.trim().length < 5
+                              ? `Kurang ${5 - actionNote.trim().length} karakter lagi (min. 5 karakter)`
+                              : `${actionNote.trim().length} karakter`}
+                          </p>
+                        </div>
+                      )}
+
+                      {nextAction === "upload_final_letter" && (
+                        <div className="mt-3 space-y-1.5">
+                          <label className="block font-semibold text-slate-700">
+                            Link Dokumen Surat Final Digital (Google Drive URL) *
+                          </label>
+                          <input
+                            type="url"
+                            required
+                            value={finalLetterUrl}
+                            onChange={(e) => setFinalLetterUrl(e.target.value)}
+                            placeholder="https://drive.google.com/file/d/.../view"
+                            className="w-full rounded-xl border border-slate-300 px-3 py-2 outline-none focus:border-brand"
+                          />
+                          <p className="text-[11px] text-slate-400">
+                            Tautan Google Drive atau cloud storage surat resmi
+                            yang telah ditandatangani pimpinan. Menyimpan akan
+                            mengubah status menjadi Disetujui.
+                          </p>
+                        </div>
+                      )}
+
+                      <div className="mt-4 flex items-center justify-between">
+                        <span className="text-[11px] text-slate-400">
+                          Pilih aksi lalu klik simpan
+                        </span>
+                        <button
+                          type="submit"
+                          disabled={!nextAction || isSavingStatus}
+                          className="rounded-xl bg-brand px-4 py-2 font-semibold text-white hover:bg-brand-dark disabled:opacity-40 cursor-pointer"
+                        >
+                          {isSavingStatus ? "Menyimpan..." : "Simpan Status"}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </form>
+              );
+            })()}
           </div>
         </div>
       )}
@@ -605,6 +880,7 @@ export default function AdminTableSection({ globalSearch }: Props) {
                 </label>
                 <input
                   required
+                  minLength={3}
                   value={manualForm.applicant_name}
                   onChange={(e) =>
                     setManualForm({
@@ -612,29 +888,59 @@ export default function AdminTableSection({ globalSearch }: Props) {
                       applicant_name: e.target.value,
                     })
                   }
-                  placeholder="Contoh: Dr. Eng. Herman / Panitia Workshop..."
+                  placeholder="Contoh: Dr. Eng. Herman / Panitia Seminar..."
                   className="w-full rounded-xl border border-slate-300 px-3 py-2 outline-none focus:border-brand"
                 />
               </div>
 
               <div>
                 <label className="mb-1 block font-semibold text-slate-700">
-                  Kontak Pemohon / WhatsApp *
+                  Kontak WhatsApp / HP *
                 </label>
                 <input
                   required
+                  minLength={5}
                   value={manualForm.contact}
                   onChange={(e) =>
                     setManualForm({ ...manualForm, contact: e.target.value })
                   }
-                  placeholder="Contoh: 081234567890"
+                  placeholder="Contoh: 081234567890 (min. 5 digit)"
                   className="w-full rounded-xl border border-slate-300 px-3 py-2 outline-none focus:border-brand"
                 />
               </div>
 
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block font-semibold text-slate-700">
+                    NIM Pemohon (Opsional)
+                  </label>
+                  <input
+                    value={manualForm.nim}
+                    onChange={(e) =>
+                      setManualForm({ ...manualForm, nim: e.target.value })
+                    }
+                    placeholder="Contoh: 215150200111..."
+                    className="w-full rounded-xl border border-slate-300 px-3 py-2 outline-none focus:border-brand"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block font-semibold text-slate-700">
+                    Program Studi (Opsional)
+                  </label>
+                  <input
+                    value={manualForm.prodi}
+                    onChange={(e) =>
+                      setManualForm({ ...manualForm, prodi: e.target.value })
+                    }
+                    placeholder="Contoh: Teknik Informatika"
+                    className="w-full rounded-xl border border-slate-300 px-3 py-2 outline-none focus:border-brand"
+                  />
+                </div>
+              </div>
+
               <div>
                 <label className="mb-1 block font-semibold text-slate-700">
-                  Lembaga *
+                  Lembaga Penyelenggara *
                 </label>
                 <select
                   required
@@ -642,9 +948,9 @@ export default function AdminTableSection({ globalSearch }: Props) {
                   onChange={(e) =>
                     setManualForm({ ...manualForm, lembaga_id: e.target.value })
                   }
-                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 outline-none focus:border-brand"
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 outline-none focus:border-brand cursor-pointer"
                 >
-                  <option value="">Pilih...</option>
+                  <option value="">Pilih Lembaga...</option>
                   {(adminLembaga?.items ?? []).map((l, i) => (
                     <option key={String(l.id ?? i)} value={String(l.id ?? "")}>
                       {String(l.name ?? "")}
@@ -659,6 +965,7 @@ export default function AdminTableSection({ globalSearch }: Props) {
                 </label>
                 <input
                   required
+                  minLength={3}
                   value={manualForm.program_kerja}
                   onChange={(e) =>
                     setManualForm({
@@ -666,48 +973,65 @@ export default function AdminTableSection({ globalSearch }: Props) {
                       program_kerja: e.target.value,
                     })
                   }
-                  placeholder="Nama kegiatan..."
+                  placeholder="Contoh: Workshop Cloud Computing 2026..."
                   className="w-full rounded-xl border border-slate-300 px-3 py-2 outline-none focus:border-brand"
                 />
               </div>
 
               <div>
                 <label className="mb-1 block font-semibold text-slate-700">
-                  Agenda *
+                  Agenda Detail *
                 </label>
                 <input
                   required
+                  minLength={3}
                   value={manualForm.agenda}
                   onChange={(e) =>
                     setManualForm({ ...manualForm, agenda: e.target.value })
                   }
-                  placeholder="Agenda acara..."
+                  placeholder="Contoh: Pelatihan instalasi dan konfigurasi server..."
                   className="w-full rounded-xl border border-slate-300 px-3 py-2 outline-none focus:border-brand"
                 />
               </div>
 
-              <div>
-                <label className="mb-1 block font-semibold text-slate-700">
-                  Ruangan *
-                </label>
-                <select
-                  required
-                  value={manualForm.room_id}
-                  onChange={(e) =>
-                    setManualForm({ ...manualForm, room_id: e.target.value })
-                  }
-                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 outline-none focus:border-brand"
-                >
-                  <option value="">Pilih...</option>
-                  {(adminRooms?.items ?? []).map((rm, i) => (
-                    <option
-                      key={String(rm.id ?? i)}
-                      value={String(rm.id ?? "")}
-                    >
-                      {String(rm.name ?? "")}
-                    </option>
-                  ))}
-                </select>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block font-semibold text-slate-700">
+                    Ruangan *
+                  </label>
+                  <select
+                    required
+                    value={manualForm.room_id}
+                    onChange={(e) =>
+                      setManualForm({ ...manualForm, room_id: e.target.value })
+                    }
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 outline-none focus:border-brand cursor-pointer"
+                  >
+                    <option value="">Pilih Ruangan...</option>
+                    {(adminRooms?.items ?? []).map((rm, i) => (
+                      <option
+                        key={String(rm.id ?? i)}
+                        value={String(rm.id ?? "")}
+                      >
+                        {String(rm.name ?? "")} (Kapasitas: {rm.capacity ?? "-"}
+                        )
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block font-semibold text-slate-700">
+                    Keperluan
+                  </label>
+                  <input
+                    value={manualForm.purpose}
+                    onChange={(e) =>
+                      setManualForm({ ...manualForm, purpose: e.target.value })
+                    }
+                    placeholder="Contoh: Kegiatan Akademik / Pelatihan"
+                    className="w-full rounded-xl border border-slate-300 px-3 py-2 outline-none focus:border-brand"
+                  />
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -718,20 +1042,23 @@ export default function AdminTableSection({ globalSearch }: Props) {
                   <input
                     type="date"
                     required
+                    min={new Date().toISOString().split("T")[0]}
                     value={manualForm.date}
                     onChange={(e) =>
                       setManualForm({ ...manualForm, date: e.target.value })
                     }
-                    className="w-full rounded-xl border border-slate-300 px-3 py-2 outline-none focus:border-brand"
+                    className="w-full rounded-xl border border-slate-300 px-3 py-2 outline-none focus:border-brand cursor-pointer"
                   />
                 </div>
                 <div>
                   <label className="mb-1 block font-semibold text-slate-700">
-                    Jumlah Peserta
+                    Jumlah Peserta *
                   </label>
                   <input
                     type="number"
                     min={1}
+                    max={10000}
+                    required
                     value={manualForm.participants}
                     onChange={(e) =>
                       setManualForm({
@@ -749,8 +1076,7 @@ export default function AdminTableSection({ globalSearch }: Props) {
                   <label className="mb-1 block font-semibold text-slate-700">
                     Waktu Mulai *
                   </label>
-                  <input
-                    type="time"
+                  <select
                     required
                     value={manualForm.start_time}
                     onChange={(e) =>
@@ -759,28 +1085,39 @@ export default function AdminTableSection({ globalSearch }: Props) {
                         start_time: e.target.value,
                       })
                     }
-                    className="w-full rounded-xl border border-slate-300 px-3 py-2 outline-none focus:border-brand"
-                  />
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 outline-none focus:border-brand cursor-pointer"
+                  >
+                    {OPERATIONAL_TIME_SLOTS.slice(0, -1).map((t) => (
+                      <option key={t} value={t}>
+                        {t} WIB
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label className="mb-1 block font-semibold text-slate-700">
                     Waktu Selesai *
                   </label>
-                  <input
-                    type="time"
+                  <select
                     required
                     value={manualForm.end_time}
                     onChange={(e) =>
                       setManualForm({ ...manualForm, end_time: e.target.value })
                     }
-                    className="w-full rounded-xl border border-slate-300 px-3 py-2 outline-none focus:border-brand"
-                  />
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 outline-none focus:border-brand cursor-pointer"
+                  >
+                    {OPERATIONAL_TIME_SLOTS.slice(1).map((t) => (
+                      <option key={t} value={t}>
+                        {t} WIB
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
               <div>
                 <label className="mb-1 block font-semibold text-slate-700">
-                  Link Dokumen (Google Drive, Opsional)
+                  Link Dokumen Pengajuan (Google Drive URL, Opsional)
                 </label>
                 <input
                   type="url"
@@ -791,7 +1128,7 @@ export default function AdminTableSection({ globalSearch }: Props) {
                       document_url: e.target.value,
                     })
                   }
-                  placeholder="https://drive.google.com/..."
+                  placeholder="https://drive.google.com/... (opsional, jika kosong menggunakan placeholder resmi)"
                   className="w-full rounded-xl border border-slate-300 px-3 py-2 outline-none focus:border-brand"
                 />
               </div>

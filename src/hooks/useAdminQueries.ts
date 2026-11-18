@@ -26,19 +26,43 @@ export function useAdminBookingStats() {
     queryFn: async () => {
       const res = await getAdminBookingStatsApi();
       const raw = res.data as DashboardStats & Record<string, unknown>;
-      // Normalize: map backend fields → camelCase aliases used by UI components
+      // Normalize: map backend fields (diajukan, direview, etc.) → camelCase aliases used by UI components
+      const total = Number(raw.total ?? raw.total_bookings ?? 0);
+      const pending = Number(
+        raw.pending ?? raw.pending_bookings ?? raw.diajukan ?? 0,
+      );
+      const review = Number(
+        raw.review ?? raw.review_bookings ?? raw.direview ?? 0,
+      );
+      const waitingSignature = Number(
+        raw.waitingSignature ?? raw.waiting_signature ?? raw.menunggu_ttd ?? 0,
+      );
+      const needsRevision = Number(
+        raw.needsRevision ?? raw.needs_revision ?? raw.perlu_revisi ?? 0,
+      );
+      const approved = Number(
+        raw.approved ?? raw.approved_bookings ?? raw.disetujui ?? 0,
+      );
+      const rejected = Number(
+        raw.rejected ?? raw.rejected_bookings ?? raw.ditolak ?? 0,
+      );
+      const cancelled = Number(
+        raw.cancelled ?? raw.cancelled_bookings ?? raw.dibatalkan ?? 0,
+      );
+
       return {
         ...raw,
-        total: Number(raw.total ?? raw.total_bookings ?? 0),
-        pending: Number(raw.pending ?? raw.pending_bookings ?? 0),
-        review: Number(raw.review ?? raw.review_bookings ?? 0),
-        waitingSignature: Number(raw.waitingSignature ?? raw.waiting_signature ?? 0),
-        needsRevision: Number(raw.needsRevision ?? raw.needs_revision ?? 0),
-        approved: Number(raw.approved ?? raw.approved_bookings ?? 0),
-        rejected: Number(raw.rejected ?? raw.rejected_bookings ?? 0),
-        total_bookings: Number(raw.total_bookings ?? raw.total ?? 0),
-        pending_bookings: Number(raw.pending_bookings ?? raw.pending ?? 0),
-        approved_bookings: Number(raw.approved_bookings ?? raw.approved ?? 0),
+        total,
+        pending,
+        review,
+        waitingSignature,
+        needsRevision,
+        approved,
+        rejected,
+        cancelled,
+        total_bookings: total,
+        pending_bookings: pending,
+        approved_bookings: approved,
         active_facilities: Number(raw.active_facilities ?? 0),
       } satisfies DashboardStats;
     },
@@ -68,8 +92,13 @@ export function useAdminBookingsPaginated(params: {
       const res = await getAdminBookingsApi(queryParams);
       const data = res.data;
       const items = (data?.items ?? []).map((r, idx): ExtendedAdminBooking => {
-        const name = r.user?.name ?? "Mahasiswa FILKOM";
-        const roomName = r.room?.name ?? "Ruangan FILKOM";
+        const name = r.requester_name || r.user?.name || "Pemohon";
+        const roomName = r.room_name || r.room?.name || "Ruangan FILKOM";
+        const org = r.lembaga_name || r.lembaga?.name || "-";
+        const identifier = r.requester_nim || r.user?.nim || "-";
+        const programStudy =
+          r.requester_prodi || r.user?.program_studi || "Fakultas Ilmu Komputer";
+        const contact = r.requester_contact || r.user?.phone || "-";
         return {
           ...r,
           backendId: r.id,
@@ -78,15 +107,19 @@ export function useAdminBookingsPaginated(params: {
           initials: getInitials(name),
           tone: tones[idx % tones.length],
           name,
-          identifier: r.user?.nim ?? "-",
-          org: r.lembaga?.name ?? "-",
+          identifier,
+          org,
           room: roomName,
-          roomMeta: r.room?.location ?? r.room?.building ?? r.purpose ?? "Kegiatan Akademik",
+          roomMeta:
+            r.room?.location ??
+            r.room?.building ??
+            r.purpose ??
+            "Kegiatan Akademik",
           category: mapRoomToCalendarMeta(roomName).category ?? "Ruang Kelas",
           date: (r.booking_date ?? r.date ?? "").slice(0, 10),
           time: `${r.start_time ?? "08:00"} - ${r.end_time ?? "10:00"}`,
-          programStudy: "Fakultas Ilmu Komputer",
-          contact: r.requester_contact ?? r.user?.phone ?? "-",
+          programStudy,
+          contact,
           participants: r.participants ?? 0,
           purpose: r.purpose ?? "Kegiatan",
           agenda: r.agenda ?? "-",
@@ -132,11 +165,31 @@ export function useAdminMasterRooms(page = 1, perPage = 20) {
 }
 
 // Master items (admin)
-export function useAdminMasterItems(page = 1, perPage = 20) {
+export function useAdminMasterItems(
+  pageOrParams:
+    | number
+    | { page?: number; perPage?: number; q?: string; status?: string } = 1,
+  perPageParam = 20,
+) {
+  const params: Record<string, unknown> =
+    typeof pageOrParams === "object"
+      ? {
+          page: pageOrParams.page ?? 1,
+          per_page: pageOrParams.perPage ?? 20,
+          ...(pageOrParams.q?.trim() ? { q: pageOrParams.q.trim() } : {}),
+          ...(pageOrParams.status && pageOrParams.status !== "all"
+            ? { status: pageOrParams.status }
+            : {}),
+        }
+      : {
+          page: pageOrParams,
+          per_page: perPageParam,
+        };
+
   return useQuery<Paginated<Item>>({
-    queryKey: ["admin", "items", page, perPage],
+    queryKey: ["admin", "items", params],
     queryFn: async () => {
-      const res = await getAdminItemsApi({ page, per_page: perPage });
+      const res = await getAdminItemsApi(params);
       return res.data;
     },
   });
@@ -243,10 +296,13 @@ export function useCalendarEvents(startDate?: string, endDate?: string) {
       const res = await getAdminBookingsApi(params);
       const items = res.data?.items ?? [];
       return items
-        .filter((r) => !["rejected", "cancelled"].includes(r.status))
+        .filter((r) => !["rejected", "cancelled", "ditolak", "dibatalkan"].includes(r.status))
         .map((r, idx) => {
-          const roomName = r.room?.name ?? "Ruangan FILKOM";
-          const dateStr = (r.date ?? "").slice(0, 10);
+          const roomName =
+            r.room_name ??
+            (typeof r.room === "object" ? r.room?.name : r.room) ??
+            "Ruangan FILKOM";
+          const dateStr = (r.booking_date ?? r.date ?? "").slice(0, 10);
           const startTime = (r.start_time ?? "08:00").slice(0, 5);
           const endTime = (r.end_time ?? "10:00").slice(0, 5);
           const activity = r.agenda ?? r.program_kerja ?? r.purpose ?? "Kegiatan";

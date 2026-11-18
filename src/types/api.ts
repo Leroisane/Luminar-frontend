@@ -180,6 +180,23 @@ export interface Booking {
   programKerja?: string;
 }
 
+export interface CalendarEventResponse {
+  id: string;
+  booking_no: string;
+  booking_date: string;
+  start_time: string;
+  end_time: string;
+  room_id: string;
+  room_name: string;
+  lembaga_name: string;
+  program_kerja: string;
+  agenda?: string;
+  purpose?: string;
+  participants?: number;
+  requester_name?: string;
+  status: BookingStatus;
+}
+
 // === AUDIT LOG ===
 export interface AuditLog {
   id: string;
@@ -219,10 +236,12 @@ export interface DashboardStats {
   waiting_signature?: number;
   needs_revision?: number;
   rejected_bookings?: number;
+  cancelled_bookings?: number;
   pending?: number;
   review?: number;
   waitingSignature?: number;
   needsRevision?: number;
   approved?: number;
   rejected?: number;
+  cancelled?: number;
 }

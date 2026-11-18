@@ -8,6 +8,7 @@ import {
   History,
   Layers,
   Package,
+  Pencil,
   Plus,
   QrCode,
   RefreshCw,
@@ -21,6 +22,7 @@ import AdminNavbar from "../components/admin/AdminNavbar";
 import AdminStatsCards from "../components/admin/AdminStatsCards";
 import AdminCalendar from "../components/admin/AdminCalendar";
 import AdminTableSection from "../components/admin/AdminTableSection";
+import StatusBadge from "../components/ui/StatusBadge";
 import {
   exportAdminBookingsExcelApi,
   createAdminRoomApi,
@@ -28,8 +30,12 @@ import {
   createAdminLembagaApi,
   deleteAdminLembagaApi,
   createAdminItemApi,
+  updateAdminItemApi,
+  patchAdminItemStatusApi,
   deleteAdminItemApi,
+  type ItemPayload,
 } from "../api/adminService";
+import type { Item } from "../types/api";
 import { getApiErrorMessage } from "../api/axiosClient";
 import {
   useAdminAuditLogs,
@@ -104,9 +110,18 @@ export default function AdminApprovalPage() {
   });
   const [newItem, setNewItem] = useState({
     name: "",
+    category: "Audio & Sound",
     stock: "1",
-    location: "Loket Sarpras Gd. G Lt. 1",
     description: "",
+    status: "tersedia" as "tersedia" | "rusak" | "nonaktif",
+  });
+  const [editingItem, setEditingItem] = useState<Item | null>(null);
+  const [editItemForm, setEditItemForm] = useState<ItemPayload>({
+    name: "",
+    category: "Audio & Sound",
+    stock_total: 1,
+    description: "",
+    status: "tersedia",
   });
   const [newLembaga, setNewLembaga] = useState({
     name: "",
@@ -191,16 +206,17 @@ export default function AdminApprovalPage() {
     try {
       await createAdminItemApi({
         name: newItem.name.trim(),
-        category: "Inventaris",
+        category: newItem.category.trim(),
         stock_total: Number(newItem.stock) || 1,
         description: newItem.description.trim() || undefined,
-        status: "tersedia",
+        status: newItem.status,
       });
       setNewItem({
         name: "",
+        category: "Audio & Sound",
         stock: "1",
-        location: "Loket Sarpras Gd. G Lt. 1",
         description: "",
+        status: "tersedia",
       });
       await queryClient.invalidateQueries({ queryKey: ["admin", "items"] });
       showToast("Barang inventaris berhasil ditambahkan.");
@@ -208,6 +224,33 @@ export default function AdminApprovalPage() {
       setPageError(getApiErrorMessage(err));
     } finally {
       setIsSavingMaster(false);
+    }
+  };
+
+  const handleUpdateItem = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!editingItem || isSavingMaster) return;
+    setIsSavingMaster(true);
+    try {
+      await updateAdminItemApi(editingItem.id, editItemForm);
+      setEditingItem(null);
+      await queryClient.invalidateQueries({ queryKey: ["admin", "items"] });
+      showToast("Data barang berhasil diperbarui.");
+    } catch (err: unknown) {
+      setPageError(getApiErrorMessage(err));
+    } finally {
+      setIsSavingMaster(false);
+    }
+  };
+
+  const handleToggleItemStatus = async (it: Item) => {
+    const nextStatus = it.status === "tersedia" ? "nonaktif" : "tersedia";
+    try {
+      await patchAdminItemStatusApi(it.id, nextStatus);
+      await queryClient.invalidateQueries({ queryKey: ["admin", "items"] });
+      showToast(`Status barang diubah menjadi ${nextStatus}.`);
+    } catch (err: unknown) {
+      setPageError(getApiErrorMessage(err));
     }
   };
 
@@ -469,38 +512,59 @@ export default function AdminApprovalPage() {
           <div className="mt-6 space-y-6">
             <form
               onSubmit={(e) => void handleAddItem(e)}
-              className="grid gap-3 rounded-2xl border border-line bg-white p-5 sm:grid-cols-5"
+              className="grid gap-3 rounded-2xl border border-line bg-white p-5 sm:grid-cols-6"
             >
               <input
                 required
-                placeholder="Nama Barang / Alat Band"
+                placeholder="Nama Barang"
                 value={newItem.name}
                 onChange={(e) =>
                   setNewItem({ ...newItem, name: e.target.value })
                 }
                 className="rounded-xl border border-slate-300 px-3 py-2 text-xs outline-none focus:border-brand"
               />
+              <select
+                value={newItem.category}
+                onChange={(e) =>
+                  setNewItem({ ...newItem, category: e.target.value })
+                }
+                className="rounded-xl border border-slate-300 px-3 py-2 text-xs outline-none focus:border-brand"
+              >
+                <option value="Audio & Sound">Audio & Sound</option>
+                <option value="Visual & Multimedia">Visual & Multimedia</option>
+                <option value="Kabel & Aksesori">Kabel & Aksesori</option>
+                <option value="Elektronik">Elektronik</option>
+                <option value="Perabotan">Perabotan</option>
+                <option value="Alat Musik">Alat Musik</option>
+                <option value="Lainnya">Lainnya</option>
+              </select>
               <input
                 type="number"
-                min={1}
+                min={0}
                 required
-                placeholder="Stok Unit"
+                placeholder="Stok Total"
                 value={newItem.stock}
                 onChange={(e) =>
                   setNewItem({ ...newItem, stock: e.target.value })
                 }
                 className="rounded-xl border border-slate-300 px-3 py-2 text-xs outline-none focus:border-brand"
               />
-              <input
-                placeholder="Lokasi Penyimpanan"
-                value={newItem.location}
+              <select
+                value={newItem.status}
                 onChange={(e) =>
-                  setNewItem({ ...newItem, location: e.target.value })
+                  setNewItem({
+                    ...newItem,
+                    status: e.target.value as "tersedia" | "rusak" | "nonaktif",
+                  })
                 }
                 className="rounded-xl border border-slate-300 px-3 py-2 text-xs outline-none focus:border-brand"
-              />
+              >
+                <option value="tersedia">Tersedia</option>
+                <option value="rusak">Rusak</option>
+                <option value="nonaktif">Nonaktif</option>
+              </select>
               <input
-                placeholder="Spesifikasi / Catatan"
+                placeholder="Deskripsi / Catatan"
                 value={newItem.description}
                 onChange={(e) =>
                   setNewItem({ ...newItem, description: e.target.value })
@@ -510,19 +574,20 @@ export default function AdminApprovalPage() {
               <button
                 type="submit"
                 disabled={isSavingMaster}
-                className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-brand px-4 py-2 text-xs font-semibold text-white hover:bg-brand-dark cursor-pointer"
+                className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-brand px-4 py-2 text-xs font-semibold text-white hover:bg-brand-dark cursor-pointer disabled:opacity-50"
               >
                 <Plus className="size-4" /> Tambah Barang
               </button>
             </form>
 
-            <div className="overflow-x-auto rounded-2xl border border-line bg-white">
+            <div className="overflow-x-auto rounded-2xl border border-line bg-white shadow-xs">
               <table className="w-full text-left text-xs">
                 <thead className="border-b border-line bg-slate-50 font-bold text-slate-600">
                   <tr>
                     <th className="px-4 py-3">Nama Barang</th>
-                    <th className="px-4 py-3">Stok</th>
-                    <th className="px-4 py-3">Lokasi</th>
+                    <th className="px-4 py-3">Kategori</th>
+                    <th className="px-4 py-3">Stok Total</th>
+                    <th className="px-4 py-3">Status</th>
                     <th className="px-4 py-3">Deskripsi</th>
                     <th className="px-4 py-3 text-right">Aksi</th>
                   </tr>
@@ -531,41 +596,87 @@ export default function AdminApprovalPage() {
                   {loadingItems ? (
                     <tr>
                       <td
-                        colSpan={5}
+                        colSpan={6}
                         className="py-8 text-center text-slate-400"
                       >
                         Memuat daftar barang...
                       </td>
                     </tr>
+                  ) : (itemsData?.items ?? []).length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={6}
+                        className="py-8 text-center text-slate-400"
+                      >
+                        Belum ada barang inventaris terdaftar.
+                      </td>
+                    </tr>
                   ) : (
                     (itemsData?.items ?? []).map((it, idx) => (
-                      <tr key={String(it.id ?? idx)}>
+                      <tr key={String(it.id ?? idx)} className="hover:bg-slate-50/60 transition-colors">
                         <td className="px-4 py-3 font-bold text-ink">
                           {String(it.name ?? "-")}
                         </td>
                         <td className="px-4 py-3 text-slate-600">
-                          {String(it.stock ?? it.quantity ?? 1)} unit
+                          <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-700">
+                            {it.category || "Umum"}
+                          </span>
                         </td>
-                        <td className="px-4 py-3 text-slate-600">
-                          {String(it.location ?? "-")}
+                        <td className="px-4 py-3 text-slate-600 font-medium">
+                          {it.stock_total ?? it.stock ?? 0} unit
                         </td>
-                        <td className="px-4 py-3 text-slate-500">
+                        <td className="px-4 py-3">
+                          <StatusBadge status={it.status ?? "tersedia"} />
+                        </td>
+                        <td className="px-4 py-3 text-slate-500 max-w-xs truncate">
                           {String(it.description ?? "-")}
                         </td>
                         <td className="px-4 py-3 text-right">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              void handleDeleteMaster(
-                                "items",
-                                it.id,
-                                String(it.name ?? "barang"),
-                              )
-                            }
-                            className="inline-flex items-center gap-1 rounded-lg bg-red-50 px-2.5 py-1 font-semibold text-red-600 hover:bg-red-100 cursor-pointer"
-                          >
-                            <Trash2 className="size-3.5" /> Hapus
-                          </button>
+                          <div className="inline-flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingItem(it);
+                                setEditItemForm({
+                                  name: it.name,
+                                  category: it.category,
+                                  stock_total: it.stock_total,
+                                  description: it.description || "",
+                                  status: it.status,
+                                });
+                              }}
+                              className="inline-flex items-center gap-1 rounded-lg bg-blue-50 px-2.5 py-1 font-semibold text-blue-600 hover:bg-blue-100 cursor-pointer"
+                              title="Edit barang"
+                            >
+                              <Pencil className="size-3.5" /> Edit
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleToggleItemStatus(it)}
+                              className={`rounded-lg px-2 py-1 text-[11px] font-semibold cursor-pointer ${
+                                it.status === "tersedia"
+                                  ? "bg-amber-50 text-amber-700 hover:bg-amber-100"
+                                  : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                              }`}
+                              title="Ubah status ketersediaan"
+                            >
+                              {it.status === "tersedia" ? "Nonaktifkan" : "Aktifkan"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void handleDeleteMaster(
+                                  "items",
+                                  it.id,
+                                  String(it.name ?? "barang"),
+                                )
+                              }
+                              className="inline-flex items-center gap-1 rounded-lg bg-red-50 px-2.5 py-1 font-semibold text-red-600 hover:bg-red-100 cursor-pointer"
+                              title="Hapus barang"
+                            >
+                              <Trash2 className="size-3.5" /> Hapus
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -573,6 +684,137 @@ export default function AdminApprovalPage() {
                 </tbody>
               </table>
             </div>
+
+            {/* MODAL EDIT BARANG */}
+            {editingItem && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
+                <div className="w-full max-w-lg rounded-3xl border border-line bg-white p-6 shadow-2xl">
+                  <div className="flex items-center justify-between pb-4 border-b border-line">
+                    <div>
+                      <h3 className="text-base font-bold text-ink">Edit Data Barang</h3>
+                      <p className="text-xs text-slate-500">Perbarui informasi barang inventaris</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setEditingItem(null)}
+                      className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 cursor-pointer"
+                    >
+                      <X className="size-5" />
+                    </button>
+                  </div>
+
+                  <form onSubmit={(e) => void handleUpdateItem(e)} className="mt-4 space-y-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">
+                        Nama Barang
+                      </label>
+                      <input
+                        required
+                        value={editItemForm.name}
+                        onChange={(e) =>
+                          setEditItemForm({ ...editItemForm, name: e.target.value })
+                        }
+                        className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs outline-none focus:border-brand"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">
+                          Kategori
+                        </label>
+                        <select
+                          value={editItemForm.category}
+                          onChange={(e) =>
+                            setEditItemForm({ ...editItemForm, category: e.target.value })
+                          }
+                          className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs outline-none focus:border-brand"
+                        >
+                          <option value="Audio & Sound">Audio & Sound</option>
+                          <option value="Visual & Multimedia">Visual & Multimedia</option>
+                          <option value="Kabel & Aksesori">Kabel & Aksesori</option>
+                          <option value="Elektronik">Elektronik</option>
+                          <option value="Perabotan">Perabotan</option>
+                          <option value="Alat Musik">Alat Musik</option>
+                          <option value="Lainnya">Lainnya</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">
+                          Stok Total
+                        </label>
+                        <input
+                          type="number"
+                          min={0}
+                          required
+                          value={editItemForm.stock_total}
+                          onChange={(e) =>
+                            setEditItemForm({
+                              ...editItemForm,
+                              stock_total: Number(e.target.value) || 0,
+                            })
+                          }
+                          className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs outline-none focus:border-brand"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">
+                        Status
+                      </label>
+                      <select
+                        value={editItemForm.status}
+                        onChange={(e) =>
+                          setEditItemForm({
+                            ...editItemForm,
+                            status: e.target.value as "tersedia" | "rusak" | "nonaktif",
+                          })
+                        }
+                        className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs outline-none focus:border-brand"
+                      >
+                        <option value="tersedia">Tersedia</option>
+                        <option value="rusak">Rusak</option>
+                        <option value="nonaktif">Nonaktif</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">
+                        Deskripsi
+                      </label>
+                      <textarea
+                        rows={3}
+                        value={editItemForm.description}
+                        onChange={(e) =>
+                          setEditItemForm({ ...editItemForm, description: e.target.value })
+                        }
+                        placeholder="Kondisi barang, kelengkapan, dll."
+                        className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs outline-none focus:border-brand"
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-end gap-2 pt-2 border-t border-line">
+                      <button
+                        type="button"
+                        onClick={() => setEditingItem(null)}
+                        className="rounded-xl px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer"
+                      >
+                        Batal
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={isSavingMaster}
+                        className="rounded-xl bg-brand px-4 py-2 text-xs font-semibold text-white hover:bg-brand-dark cursor-pointer disabled:opacity-50"
+                      >
+                        Simpan Perubahan
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

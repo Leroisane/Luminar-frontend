@@ -7,12 +7,15 @@ import {
   Clock,
   Grid,
   X,
+  Building,
+  Users,
 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   useLembagaOptions,
   useRoomsList,
   useTimeSlotsConfig,
+  useMonthCalendarEvents,
 } from "../../hooks/useDashboardQueries";
 import {
   createBookingApi,
@@ -20,6 +23,8 @@ import {
 } from "../../api/facilityService";
 import { getApiErrorMessage } from "../../api/axiosClient";
 import { useAuthStore } from "../../store/useAuthStore";
+import type { CalendarEventResponse } from "../../types/api";
+import StatusBadge from "../ui/StatusBadge";
 import {
   cn,
   formatLongDate,
@@ -34,7 +39,17 @@ interface Props {
   onSelectDate: (d: Date) => void;
 }
 
-const weekdays = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
+const weekdays = ["SENIN", "SELASA", "RABU", "KAMIS", "JUMAT", "SABTU", "MINGGU"];
+
+function getEventChipClasses(index: number) {
+  const palette = [
+    "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100",
+    "border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-100",
+    "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100",
+    "border-slate-200 bg-slate-100 text-slate-800 hover:bg-slate-200",
+  ];
+  return palette[index % palette.length];
+}
 
 function generateHourlySlots(dayStart: string, dayEnd: string): string[] {
   const startHour = Number(dayStart.split(":")[0] || 7);
@@ -55,6 +70,14 @@ export default function ScheduleSection({ selectedDate, onSelectDate }: Props) {
   const [viewMonth, setViewMonth] = useState(
     new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1),
   );
+
+  // Modal detail event & modal list all events on a day
+  const [selectedDetailEvent, setSelectedDetailEvent] =
+    useState<CalendarEventResponse | null>(null);
+  const [viewingDayEvents, setViewingDayEvents] = useState<{
+    date: Date;
+    events: CalendarEventResponse[];
+  } | null>(null);
 
   // Quick slot booking modal
   const [quickSlot, setQuickSlot] = useState<{
@@ -78,6 +101,38 @@ export default function ScheduleSection({ selectedDate, onSelectDate }: Props) {
   const { data: timeConfig } = useTimeSlotsConfig();
 
   const dateISO = toISODate(selectedDate);
+  const viewMonthISO = `${viewMonth.getFullYear()}-${String(
+    viewMonth.getMonth() + 1,
+  ).padStart(2, "0")}`;
+
+  // Query events kalender bulanan dari backend
+  const {
+    data: monthCalendarEvents = [],
+    isLoading: isLoadingCalendarEvents,
+  } = useMonthCalendarEvents(
+    viewMonthISO,
+    selectedRoomFilter !== "all" ? selectedRoomFilter : undefined,
+  );
+
+  // Petakan event berdasarkan booking_date (YYYY-MM-DD)
+  const eventsByDate = useMemo(() => {
+    const map = new Map<string, CalendarEventResponse[]>();
+    for (const ev of monthCalendarEvents) {
+      const d = (ev.booking_date || "").slice(0, 10);
+      if (!d) continue;
+      if (!map.has(d)) {
+        map.set(d, []);
+      }
+      map.get(d)!.push(ev);
+    }
+    return map;
+  }, [monthCalendarEvents]);
+
+  // Event pada tanggal terpilih
+  const selectedDateEvents = useMemo(() => {
+    return eventsByDate.get(dateISO) || [];
+  }, [eventsByDate, dateISO]);
+
   const timeConfigObj = timeConfig as Record<string, string> | undefined;
   const timeRows = useMemo(
     () =>
@@ -123,12 +178,16 @@ export default function ScheduleSection({ selectedDate, onSelectDate }: Props) {
     },
   });
 
+  // Susun kalender mingguan mulai dari SENIN (Monday-first)
   const days = useMemo(() => {
     const first = new Date(viewMonth.getFullYear(), viewMonth.getMonth(), 1);
     const last = new Date(viewMonth.getFullYear(), viewMonth.getMonth() + 1, 0);
     const start = new Date(first);
-    start.setDate(first.getDate() - first.getDay());
-    const total = Math.ceil((first.getDay() + last.getDate()) / 7) * 7;
+    // first.getDay(): 0 = Min, 1 = Sen, ..., 6 = Sab
+    // Monday-first: Sen = 0, Sel = 1, ..., Min = 6
+    const mondayFirstDay = (first.getDay() + 6) % 7;
+    start.setDate(first.getDate() - mondayFirstDay);
+    const total = Math.ceil((mondayFirstDay + last.getDate()) / 7) * 7;
     return Array.from({ length: total }, (_, i) => {
       const d = new Date(start);
       d.setDate(start.getDate() + i);
@@ -337,57 +396,101 @@ export default function ScheduleSection({ selectedDate, onSelectDate }: Props) {
             </div>
 
             {/* Grid Kalender */}
-            <div className="mt-4 grid grid-cols-7 border-l border-t border-line">
-              {weekdays.map((w, i) => (
-                <div
-                  key={w}
-                  className={cn(
-                    "border-b border-r border-line bg-slate-50 py-2 text-center text-xs font-bold",
-                    i === 0 ? "text-red-500" : "text-slate-600",
-                  )}
-                >
-                  {w}
-                </div>
-              ))}
-              {days.map((d) => {
-                const inMonth = d.getMonth() === viewMonth.getMonth();
-                const selected = isSameDay(d, selectedDate);
-                return (
-                  <button
-                    key={d.toISOString()}
-                    type="button"
-                    onClick={() => onSelectDate(d)}
-                    className={cn(
-                      "flex min-h-[72px] flex-col items-start justify-between border-b border-r border-line p-2 text-left transition cursor-pointer",
-                      selected
-                        ? "bg-emerald-50/80 ring-2 ring-inset ring-brand"
-                        : inMonth
-                          ? "bg-white hover:bg-slate-50"
-                          : "bg-slate-50/40 text-slate-300",
-                    )}
-                  >
-                    <span
+            <div className="mt-4 overflow-hidden rounded-2xl border border-line shadow-xs">
+              {/* Header Hari: Maroon background dengan teks kapital putih sesuai referensi */}
+              <div className="grid grid-cols-7 bg-[#780016] py-2.5 text-center text-xs font-bold tracking-wider text-white">
+                {weekdays.map((w) => (
+                  <div key={w} className="uppercase">
+                    {w}
+                  </div>
+                ))}
+              </div>
+
+              {/* Grid Sel Kalender */}
+              <div className="grid grid-cols-7 border-t border-line bg-white">
+                {days.map((d) => {
+                  const dayISO = toISODate(d);
+                  const inMonth = d.getMonth() === viewMonth.getMonth();
+                  const selected = isSameDay(d, selectedDate);
+                  const isToday = isSameDay(d, new Date());
+                  const dayEvents = eventsByDate.get(dayISO) || [];
+
+                  return (
+                    <div
+                      key={d.toISOString()}
+                      onClick={() => onSelectDate(d)}
                       className={cn(
-                        "flex size-6 items-center justify-center rounded-md text-xs font-bold",
+                        "flex min-h-[110px] sm:min-h-[125px] flex-col justify-start border-b border-r border-line p-1.5 transition text-left cursor-pointer",
                         selected
-                          ? "bg-brand text-white"
+                          ? "bg-rose-50/40 ring-2 ring-inset ring-[#780016]"
                           : inMonth
-                            ? "text-ink"
-                            : "text-slate-300",
+                            ? "bg-white hover:bg-slate-50/70"
+                            : "bg-slate-50/50",
                       )}
                     >
-                      {d.getDate()}
-                    </span>
-                    {selected && (
-                      <span className="mt-1 w-full truncate rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-brand">
-                        {isLoadingAvail
-                          ? "Memuat..."
-                          : `${dayAgendas.length} Agenda`}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
+                      {/* Baris Angka Tanggal */}
+                      <div className="flex items-center justify-between w-full mb-1">
+                        {isToday ? (
+                          <span className="flex size-6 items-center justify-center rounded-full bg-[#780016] text-white text-xs font-bold shadow-xs">
+                            {d.getDate()}
+                          </span>
+                        ) : (
+                          <span
+                            className={cn(
+                              "flex size-6 items-center justify-center text-xs font-medium",
+                              inMonth ? "text-slate-800" : "text-slate-300",
+                            )}
+                          >
+                            {d.getDate()}
+                          </span>
+                        )}
+                        {selected && !isToday && (
+                          <span className="size-1.5 rounded-full bg-[#780016]" />
+                        )}
+                      </div>
+
+                      {/* Daftar Chip Event */}
+                      <div className="flex flex-col gap-1 w-full overflow-hidden">
+                        {dayEvents.slice(0, 3).map((ev, idx) => (
+                          <button
+                            key={ev.id}
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedDetailEvent(ev);
+                            }}
+                            className={cn(
+                              "flex items-center gap-1 w-full rounded px-1.5 py-0.5 text-[11px] font-medium border text-left truncate transition cursor-pointer shadow-2xs",
+                              getEventChipClasses(idx),
+                            )}
+                            title={`${ev.start_time?.slice(0, 5)} ${ev.program_kerja || ev.agenda} (${ev.room_name})`}
+                          >
+                            <span className="font-bold shrink-0">
+                              {ev.start_time?.slice(0, 5)}
+                            </span>
+                            <span className="truncate">
+                              {ev.program_kerja || ev.agenda || ev.room_name}
+                            </span>
+                          </button>
+                        ))}
+
+                        {dayEvents.length > 3 && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setViewingDayEvents({ date: d, events: dayEvents });
+                            }}
+                            className="text-left text-[11px] font-bold text-[#780016] hover:text-red-800 hover:underline pt-0.5 cursor-pointer"
+                          >
+                            +{dayEvents.length - 3} lainnya
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
 
@@ -397,18 +500,43 @@ export default function ScheduleSection({ selectedDate, onSelectDate }: Props) {
               <h3 className="text-base font-bold text-ink">
                 Agenda Kegiatan {formatLongDate(selectedDate)}
               </h3>
-              <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-brand">
-                {dayAgendas.length} Kegiatan Terjadwal
+              <span className="rounded-full bg-rose-50 px-3 py-1 text-xs font-bold text-[#780016]">
+                {selectedDateEvents.length > 0
+                  ? `${selectedDateEvents.length} Kegiatan Terjadwal`
+                  : `${dayAgendas.length} Kegiatan Terjadwal`}
               </span>
             </div>
 
-            {isLoadingAvail ? (
+            {isLoadingCalendarEvents || isLoadingAvail ? (
               <div className="mt-4 h-20 animate-pulse rounded-xl bg-slate-100" />
-            ) : dayAgendas.length === 0 ? (
-              <p className="py-10 text-center text-sm text-slate-500">
-                Tidak ada kegiatan yang dijadwalkan pada tanggal ini.
-              </p>
-            ) : (
+            ) : selectedDateEvents.length > 0 ? (
+              <ul className="mt-4 divide-y divide-line">
+                {selectedDateEvents.map((ev) => (
+                  <li
+                    key={ev.id}
+                    onClick={() => setSelectedDetailEvent(ev)}
+                    className="flex flex-wrap items-center justify-between gap-3 py-3 px-2 rounded-xl hover:bg-slate-50 transition cursor-pointer"
+                  >
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-bold text-ink">
+                          {ev.program_kerja || ev.agenda || "Kegiatan Terjadwal"}
+                        </p>
+                        <StatusBadge status={ev.status} />
+                      </div>
+                      <p className="mt-0.5 text-xs text-slate-500">
+                        {ev.lembaga_name} •{" "}
+                        <strong className="text-brand">{ev.room_name}</strong>
+                        {ev.requester_name ? ` • Pemohon: ${ev.requester_name}` : ""}
+                      </p>
+                    </div>
+                    <span className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2.5 py-1 font-mono text-xs font-semibold text-slate-700">
+                      <Clock className="size-3.5" /> {ev.start_time?.slice(0, 5)} - {ev.end_time?.slice(0, 5)} WIB
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : dayAgendas.length > 0 ? (
               <ul className="mt-4 divide-y divide-line">
                 {dayAgendas.map((ag, idx) => (
                   <li
@@ -428,6 +556,10 @@ export default function ScheduleSection({ selectedDate, onSelectDate }: Props) {
                   </li>
                 ))}
               </ul>
+            ) : (
+              <p className="py-10 text-center text-sm text-slate-500">
+                Tidak ada kegiatan yang dijadwalkan pada tanggal ini.
+              </p>
             )}
           </div>
         </div>
@@ -715,6 +847,193 @@ export default function ScheduleSection({ selectedDate, onSelectDate }: Props) {
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* Modal Detail Event yang Diklik dari Kalender */}
+      {selectedDetailEvent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
+          <div className="relative w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl transition animate-in fade-in zoom-in-95 duration-150">
+            {/* Header Modal */}
+            <div className="flex items-start justify-between border-b border-line pb-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="rounded-md bg-rose-100 px-2 py-0.5 font-mono text-[11px] font-bold text-[#780016]">
+                    {selectedDetailEvent.booking_no || "EVENT"}
+                  </span>
+                  <StatusBadge status={selectedDetailEvent.status} />
+                </div>
+                <h3 className="mt-2 text-lg font-bold text-ink leading-snug">
+                  {selectedDetailEvent.program_kerja ||
+                    selectedDetailEvent.agenda ||
+                    "Detail Peminjaman Ruangan"}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedDetailEvent(null)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="size-5" />
+              </button>
+            </div>
+
+            {/* Konten Detail Event */}
+            <div className="mt-4 space-y-3.5 text-sm">
+              {selectedDetailEvent.agenda && (
+                <div className="rounded-2xl bg-slate-50 p-3.5 border border-line">
+                  <p className="text-xs font-semibold text-slate-500">
+                    Deskripsi / Agenda Kegiatan
+                  </p>
+                  <p className="mt-1 font-medium text-ink">
+                    {selectedDetailEvent.agenda}
+                  </p>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-2xl border border-line p-3">
+                  <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                    <Building className="size-3.5 text-[#780016]" />
+                    <span>Ruangan</span>
+                  </div>
+                  <p className="mt-1 font-bold text-ink">
+                    {selectedDetailEvent.room_name}
+                  </p>
+                </div>
+
+                <div className="rounded-2xl border border-line p-3">
+                  <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                    <Clock className="size-3.5 text-[#780016]" />
+                    <span>Waktu</span>
+                  </div>
+                  <p className="mt-1 font-bold text-ink">
+                    {selectedDetailEvent.start_time?.slice(0, 5)} -{" "}
+                    {selectedDetailEvent.end_time?.slice(0, 5)} WIB
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-2xl border border-line p-3">
+                  <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                    <CalendarDays className="size-3.5 text-[#780016]" />
+                    <span>Tanggal</span>
+                  </div>
+                  <p className="mt-1 font-semibold text-ink">
+                    {formatLongDate(new Date(selectedDetailEvent.booking_date))}
+                  </p>
+                </div>
+
+                <div className="rounded-2xl border border-line p-3">
+                  <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                    <Users className="size-3.5 text-[#780016]" />
+                    <span>Peserta</span>
+                  </div>
+                  <p className="mt-1 font-semibold text-ink">
+                    {selectedDetailEvent.participants
+                      ? `${selectedDetailEvent.participants} Orang`
+                      : "-"}
+                  </p>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-line p-3">
+                <p className="text-xs text-slate-500">Lembaga / Organisasi</p>
+                <p className="mt-0.5 font-semibold text-ink">
+                  {selectedDetailEvent.lembaga_name || "-"}
+                </p>
+                {selectedDetailEvent.requester_name && (
+                  <p className="mt-1 text-xs text-slate-600">
+                    Pemohon:{" "}
+                    <span className="font-semibold text-ink">
+                      {selectedDetailEvent.requester_name}
+                    </span>
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Footer Modal */}
+            <div className="mt-6 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setSelectedDetailEvent(null)}
+                className="rounded-xl bg-slate-100 px-5 py-2 text-xs font-bold text-slate-700 hover:bg-slate-200 transition cursor-pointer"
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Daftar Semua Event di Suatu Hari (+X lainnya) */}
+      {viewingDayEvents && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
+          <div className="relative w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl transition animate-in fade-in zoom-in-95 duration-150 max-h-[85vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-line pb-3">
+              <div>
+                <h3 className="text-base font-bold text-ink">
+                  Agenda {formatLongDate(viewingDayEvents.date)}
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Total {viewingDayEvents.events.length} kegiatan pada hari ini
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setViewingDayEvents(null)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="size-5" />
+              </button>
+            </div>
+
+            <div className="mt-3 flex-1 overflow-y-auto divide-y divide-line pr-1">
+              {viewingDayEvents.events.map((ev) => (
+                <div
+                  key={ev.id}
+                  onClick={() => {
+                    setViewingDayEvents(null);
+                    setSelectedDetailEvent(ev);
+                  }}
+                  className="flex items-center justify-between gap-3 py-2.5 px-2 rounded-xl hover:bg-slate-50 transition cursor-pointer"
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-mono text-xs font-bold text-slate-700">
+                        {ev.start_time?.slice(0, 5)} - {ev.end_time?.slice(0, 5)}
+                      </span>
+                      <StatusBadge
+                        status={ev.status}
+                        className="text-[10px] py-0 px-2"
+                      />
+                    </div>
+                    <p className="mt-1 font-semibold text-xs text-ink truncate">
+                      {ev.program_kerja || ev.agenda}
+                    </p>
+                    <p className="text-[11px] text-slate-500 truncate">
+                      {ev.room_name} • {ev.lembaga_name}
+                    </p>
+                  </div>
+                  <span className="shrink-0 text-xs font-bold text-[#780016] hover:underline">
+                    Detail &rarr;
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-4 flex justify-end border-t border-line pt-3">
+              <button
+                type="button"
+                onClick={() => setViewingDayEvents(null)}
+                className="rounded-xl bg-slate-100 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-200 transition cursor-pointer"
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </section>
