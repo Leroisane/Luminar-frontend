@@ -1,23 +1,37 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { logoutApi } from "../../api/authService";
 import { useAuthStore } from "../../store/useAuthStore";
 import { cn } from "../../utils/helpers";
 import logoLuminar from "../../assets/logo-luminar.png";
 import iconLuminar from "../../assets/icon-luminar.png";
-import { LogOut, Menu, User, X } from "lucide-react";
+import { Bell, CheckCheck, LogOut, Menu, User, X } from "lucide-react";
 
 const links = [
-  { id: "katalog", label: "Katalog", href: "#katalog" },
   { id: "kalender", label: "Kalender", href: "#kalender" },
+  { id: "katalog", label: "Katalog", href: "#katalog" },
   { id: "riwayat", label: "Riwayat Peminjaman", href: "#riwayat" },
 ];
 
 export default function DashboardNavbar() {
   const navigate = useNavigate();
   const { user, logout } = useAuthStore();
-  const [active, setActive] = useState("katalog");
+  const [active, setActive] = useState("kalender");
   const [open, setOpen] = useState(false);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(3);
+  const notifRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!notifOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
+        setNotifOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [notifOpen]);
 
   const handleLogout = async () => {
     try {
@@ -68,6 +82,68 @@ export default function DashboardNavbar() {
 
         {/* Actions */}
         <div className="flex shrink-0 items-center gap-3">
+          {/* Notifikasi Mahasiswa */}
+          {user && (
+            <div className="relative shrink-0" ref={notifRef}>
+              <button
+                type="button"
+                aria-label="Notifikasi"
+                onClick={() => setNotifOpen((v) => !v)}
+                className="relative flex size-10 shrink-0 items-center justify-center rounded-xl hover:bg-slate-100 cursor-pointer"
+              >
+                <Bell className="size-5 text-slate-600" />
+                {unreadCount > 0 && (
+                  <span className="absolute right-1.5 top-1 flex size-4 items-center justify-center rounded-full bg-red-600 text-[10px] font-bold text-white">
+                    {unreadCount}
+                  </span>
+                )}
+              </button>
+
+              {notifOpen && (
+                <>
+                  <button
+                    type="button"
+                    aria-label="Tutup notifikasi"
+                    className="fixed inset-0 z-10 cursor-default"
+                    onClick={() => setNotifOpen(false)}
+                  />
+                  <div className="absolute right-0 z-20 mt-2 w-80 rounded-2xl border border-line bg-white p-4 shadow-xl">
+                    <div className="flex items-center justify-between border-b border-line pb-2.5">
+                      <span className="text-sm font-bold text-slate-900">
+                        Notifikasi Peminjaman
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setUnreadCount(0)}
+                        className="inline-flex items-center gap-1 text-xs font-semibold text-brand hover:underline cursor-pointer"
+                      >
+                        <CheckCheck className="size-3.5" /> Tandai dibaca
+                      </button>
+                    </div>
+                    <ul className="mt-2.5 space-y-2.5 text-xs">
+                      <li className="rounded-lg bg-emerald-50/70 p-2.5">
+                        <p className="font-semibold text-slate-800">
+                          Pengajuan Reservasi Ruangan Diterima
+                        </p>
+                        <p className="mt-0.5 text-slate-500">
+                          Proposal Anda sedang ditinjau oleh Koordinator Sarpras &amp; Laboran.
+                        </p>
+                      </li>
+                      <li className="rounded-lg bg-slate-50 p-2.5">
+                        <p className="font-semibold text-slate-800">
+                          Informasi Pengambilan Kunci &amp; Fasilitas
+                        </p>
+                        <p className="mt-0.5 text-slate-500">
+                          Tunjukkan bukti reservasi di loket Sarpras Gedung G Lantai 1.
+                        </p>
+                      </li>
+                    </ul>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
           {user ? (
             <>
               <div className="hidden items-center gap-2.5 sm:flex">

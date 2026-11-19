@@ -239,6 +239,23 @@ export default function ScheduleSection({ selectedDate, onSelectDate }: Props) {
     setIsSubmitting(true);
     setModalError(null);
 
+    // Cek bentrok jadwal ruangan
+    const info = availabilityMap[quickSlot.roomId];
+    if (info?.booked) {
+      const hasConflict = (info.booked as Record<string, unknown>[]).some((b) => {
+        const bs = String(b.start_time ?? "").slice(0, 5);
+        const be = String(b.end_time ?? "").slice(0, 5);
+        return bs && be && quickSlot.timeStart < be && quickSlot.timeEnd > bs;
+      });
+      if (hasConflict) {
+        setModalError(
+          "✨ Maaf ya, ruangan ini sudah dipesan pada jam tersebut. Silakan pilih slot waktu lain yang masih bertanda hijau atau pilih ruangan lain yang tersedia!",
+        );
+        setIsSubmitting(false);
+        return;
+      }
+    }
+
     try {
       await createBookingApi({
         room_id: String(quickSlot.roomId),
@@ -269,7 +286,15 @@ export default function ScheduleSection({ selectedDate, onSelectDate }: Props) {
         .getElementById("riwayat")
         ?.scrollIntoView({ behavior: "smooth" });
     } catch (err: unknown) {
-      setModalError(getApiErrorMessage(err));
+      const msg = getApiErrorMessage(err);
+      const isConflict =
+        /conflict|sudah|terisi|bentrok|already|409/i.test(msg) ||
+        (err as { response?: { status?: number } })?.response?.status === 409;
+      setModalError(
+        isConflict
+          ? "✨ Maaf ya, ruangan ini sudah terisi pada waktu yang Anda pilih. Silakan tentukan jadwal atau ruangan alternatif ya!"
+          : msg,
+      );
     } finally {
       window.setTimeout(() => setIsSubmitting(false), 2000);
     }

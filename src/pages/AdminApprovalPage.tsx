@@ -15,7 +15,6 @@ import {
   ShieldCheck,
   Trash2,
   X,
-  ChevronRight,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import AdminNavbar from "../components/admin/AdminNavbar";
@@ -26,8 +25,11 @@ import StatusBadge from "../components/ui/StatusBadge";
 import {
   exportAdminBookingsExcelApi,
   createAdminRoomApi,
+  updateAdminRoomApi,
+  patchAdminRoomStatusApi,
   deleteAdminRoomApi,
   createAdminLembagaApi,
+  updateAdminLembagaApi,
   deleteAdminLembagaApi,
   createAdminItemApi,
   updateAdminItemApi,
@@ -35,7 +37,7 @@ import {
   deleteAdminItemApi,
   type ItemPayload,
 } from "../api/adminService";
-import type { Item } from "../types/api";
+import type { Item, Room, Lembaga } from "../types/api";
 import { getApiErrorMessage } from "../api/axiosClient";
 import {
   useAdminAuditLogs,
@@ -71,7 +73,6 @@ const adminTabs: {
 export default function AdminApprovalPage() {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<AdminTab>("bookings");
-  const [globalSearch, setGlobalSearch] = useState("");
   const [sopModalOpen, setSopModalOpen] = useState(false);
   const [pageToast, setPageToast] = useState<string | null>(null);
   const [pageError, setPageError] = useState<string | null>(null);
@@ -108,6 +109,15 @@ export default function AdminApprovalPage() {
     capacity: "40",
     description: "",
   });
+  const [editingRoom, setEditingRoom] = useState<Room | null>(null);
+  const [editRoomForm, setEditRoomForm] = useState({
+    name: "",
+    building: "",
+    capacity: "40",
+    description: "",
+    status: "tersedia" as "tersedia" | "renovasi" | "nonaktif",
+  });
+
   const [newItem, setNewItem] = useState({
     name: "",
     category: "Audio & Sound",
@@ -123,10 +133,18 @@ export default function AdminApprovalPage() {
     description: "",
     status: "tersedia",
   });
+
   const [newLembaga, setNewLembaga] = useState({
     name: "",
     code: "",
     description: "",
+  });
+  const [editingLembaga, setEditingLembaga] = useState<Lembaga | null>(null);
+  const [editLembagaForm, setEditLembagaForm] = useState({
+    name: "",
+    code: "",
+    description: "",
+    is_active: true,
   });
   const [isSavingMaster, setIsSavingMaster] = useState(false);
 
@@ -272,27 +290,77 @@ export default function AdminApprovalPage() {
     }
   };
 
+  const handleUpdateRoom = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!editingRoom || isSavingMaster) return;
+    setIsSavingMaster(true);
+    try {
+      await updateAdminRoomApi(editingRoom.id, {
+        name: editRoomForm.name.trim(),
+        location: editRoomForm.building.trim(),
+        capacity: Number(editRoomForm.capacity) || 30,
+        description: editRoomForm.description.trim() || undefined,
+        status: editRoomForm.status,
+      });
+      setEditingRoom(null);
+      await queryClient.invalidateQueries({ queryKey: ["admin", "rooms"] });
+      showToast("Data ruangan berhasil diperbarui.");
+    } catch (err: unknown) {
+      setPageError(getApiErrorMessage(err));
+    } finally {
+      setIsSavingMaster(false);
+    }
+  };
+
+  const handleToggleRoomStatus = async (rm: Room) => {
+    const nextStatus = rm.status === "tersedia" ? "nonaktif" : "tersedia";
+    try {
+      await patchAdminRoomStatusApi(rm.id, nextStatus);
+      await queryClient.invalidateQueries({ queryKey: ["admin", "rooms"] });
+      showToast(`Status ruangan diubah menjadi ${nextStatus}.`);
+    } catch (err: unknown) {
+      setPageError(getApiErrorMessage(err));
+    }
+  };
+
+  const handleUpdateLembaga = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!editingLembaga || isSavingMaster) return;
+    setIsSavingMaster(true);
+    try {
+      await updateAdminLembagaApi(editingLembaga.id, {
+        name: editLembagaForm.name.trim(),
+        is_active: editLembagaForm.is_active,
+      });
+      setEditingLembaga(null);
+      await queryClient.invalidateQueries({ queryKey: ["admin", "lembaga"] });
+      showToast("Data lembaga berhasil diperbarui.");
+    } catch (err: unknown) {
+      setPageError(getApiErrorMessage(err));
+    } finally {
+      setIsSavingMaster(false);
+    }
+  };
+
+  const handleToggleLembagaStatus = async (lb: Lembaga) => {
+    const nextActive = lb.is_active === false;
+    try {
+      await updateAdminLembagaApi(lb.id, {
+        name: lb.name,
+        is_active: nextActive,
+      });
+      await queryClient.invalidateQueries({ queryKey: ["admin", "lembaga"] });
+      showToast(`Status lembaga diubah menjadi ${nextActive ? "aktif" : "nonaktif"}.`);
+    } catch (err: unknown) {
+      setPageError(getApiErrorMessage(err));
+    }
+  };
+
   return (
     <div className="flex min-h-screen w-full flex-col bg-canvas">
-      <AdminNavbar
-        pendingCount={stats?.pending ?? 0}
-        search={globalSearch}
-        onSearch={setGlobalSearch}
-      />
+      <AdminNavbar pendingCount={stats?.pending ?? 0} />
 
       <main className="mx-auto w-full max-w-[1500px] flex-1 px-4 pb-14 pt-6 sm:px-6 lg:px-10">
-        <nav
-          aria-label="Breadcrumb"
-          className="flex flex-wrap items-center gap-1.5 text-sm text-slate-500"
-        >
-          <span>Sarpras Portal</span>
-          <ChevronRight className="size-3.5 shrink-0" />
-          <span>Admin Panel</span>
-          <ChevronRight className="size-3.5 shrink-0" />
-          <span className="font-semibold text-brand">
-            {adminTabs.find((t) => t.key === activeTab)?.label}
-          </span>
-        </nav>
 
         <div className="mt-2 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
@@ -318,16 +386,6 @@ export default function AdminApprovalPage() {
                 )}
               />
               Perbarui
-            </button>
-
-            <button
-              type="button"
-              disabled={isExporting}
-              onClick={() => void handleExportRekap()}
-              className="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-brand-dark disabled:opacity-50 cursor-pointer"
-            >
-              <Download className="size-4 shrink-0" />{" "}
-              {isExporting ? "Mengekspor..." : "Ekspor Rekap (.xlsx)"}
             </button>
           </div>
         </div>
@@ -390,7 +448,7 @@ export default function AdminApprovalPage() {
           <div className="mt-6 flex flex-col gap-6">
             <AdminStatsCards />
             <AdminCalendar />
-            <AdminTableSection globalSearch={globalSearch} />
+            <AdminTableSection />
           </div>
         )}
 
@@ -455,6 +513,7 @@ export default function AdminApprovalPage() {
                     <th className="px-4 py-3">Gedung / Lokasi</th>
                     <th className="px-4 py-3">Kapasitas</th>
                     <th className="px-4 py-3">Deskripsi</th>
+                    <th className="px-4 py-3">Status</th>
                     <th className="px-4 py-3 text-right">Aksi</th>
                   </tr>
                 </thead>
@@ -462,7 +521,7 @@ export default function AdminApprovalPage() {
                   {loadingRooms ? (
                     <tr>
                       <td
-                        colSpan={5}
+                        colSpan={6}
                         className="py-8 text-center text-slate-400"
                       >
                         Memuat daftar ruangan...
@@ -483,20 +542,65 @@ export default function AdminApprovalPage() {
                         <td className="px-4 py-3 text-slate-500">
                           {String(rm.description ?? "-")}
                         </td>
-                        <td className="px-4 py-3 text-right">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              void handleDeleteMaster(
-                                "rooms",
-                                rm.id,
-                                String(rm.name ?? "ruangan"),
-                              )
-                            }
-                            className="inline-flex items-center gap-1 rounded-lg bg-red-50 px-2.5 py-1 font-semibold text-red-600 hover:bg-red-100 cursor-pointer"
+                        <td className="px-4 py-3">
+                          <span
+                            className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold capitalize ${
+                              rm.status === "tersedia"
+                                ? "bg-emerald-50 text-emerald-700"
+                                : rm.status === "renovasi"
+                                  ? "bg-amber-50 text-amber-700"
+                                  : "bg-slate-100 text-slate-600"
+                            }`}
                           >
-                            <Trash2 className="size-3.5" /> Hapus
-                          </button>
+                            {rm.status ?? "tersedia"}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingRoom(rm);
+                                setEditRoomForm({
+                                  name: rm.name,
+                                  building: rm.location || rm.building || "",
+                                  capacity: String(rm.capacity || 40),
+                                  description: rm.description || "",
+                                  status: rm.status || "tersedia",
+                                });
+                              }}
+                              className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2 py-1 font-semibold text-slate-700 hover:bg-slate-200 cursor-pointer"
+                              title="Edit ruangan"
+                            >
+                              <Pencil className="size-3.5" /> Edit
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleToggleRoomStatus(rm)}
+                              className={`rounded-lg px-2 py-1 text-[11px] font-semibold cursor-pointer ${
+                                rm.status === "tersedia"
+                                  ? "bg-amber-50 text-amber-700 hover:bg-amber-100"
+                                  : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                              }`}
+                              title="Ubah status ketersediaan"
+                            >
+                              {rm.status === "tersedia" ? "Nonaktifkan" : "Aktifkan"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void handleDeleteMaster(
+                                  "rooms",
+                                  rm.id,
+                                  String(rm.name ?? "ruangan"),
+                                )
+                              }
+                              className="inline-flex items-center gap-1 rounded-lg bg-red-50 px-2.5 py-1 font-semibold text-red-600 hover:bg-red-100 cursor-pointer"
+                              title="Hapus ruangan"
+                            >
+                              <Trash2 className="size-3.5" /> Hapus
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -504,6 +608,126 @@ export default function AdminApprovalPage() {
                 </tbody>
               </table>
             </div>
+
+            {/* MODAL EDIT RUANGAN */}
+            {editingRoom && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
+                <div className="w-full max-w-lg rounded-3xl border border-line bg-white p-6 shadow-2xl">
+                  <div className="flex items-center justify-between pb-4 border-b border-line">
+                    <div>
+                      <h3 className="text-base font-bold text-ink">Edit Data Ruangan</h3>
+                      <p className="text-xs text-slate-500">Perbarui informasi fasilitas ruangan</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setEditingRoom(null)}
+                      className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 cursor-pointer"
+                    >
+                      <X className="size-5" />
+                    </button>
+                  </div>
+
+                  <form onSubmit={(e) => void handleUpdateRoom(e)} className="mt-4 space-y-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">
+                        Nama Ruangan
+                      </label>
+                      <input
+                        required
+                        value={editRoomForm.name}
+                        onChange={(e) =>
+                          setEditRoomForm({ ...editRoomForm, name: e.target.value })
+                        }
+                        className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs outline-none focus:border-brand"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">
+                          Gedung / Lokasi
+                        </label>
+                        <input
+                          required
+                          value={editRoomForm.building}
+                          onChange={(e) =>
+                            setEditRoomForm({ ...editRoomForm, building: e.target.value })
+                          }
+                          className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs outline-none focus:border-brand"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">
+                          Kapasitas (Orang)
+                        </label>
+                        <input
+                          type="number"
+                          min={1}
+                          required
+                          value={editRoomForm.capacity}
+                          onChange={(e) =>
+                            setEditRoomForm({ ...editRoomForm, capacity: e.target.value })
+                          }
+                          className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs outline-none focus:border-brand"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">
+                        Deskripsi Fasilitas
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={editRoomForm.description}
+                        onChange={(e) =>
+                          setEditRoomForm({ ...editRoomForm, description: e.target.value })
+                        }
+                        className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs outline-none focus:border-brand resize-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">
+                        Status Ketersediaan
+                      </label>
+                      <select
+                        value={editRoomForm.status}
+                        onChange={(e) =>
+                          setEditRoomForm({
+                            ...editRoomForm,
+                            status: e.target.value as "tersedia" | "renovasi" | "nonaktif",
+                          })
+                        }
+                        className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs outline-none focus:border-brand"
+                      >
+                        <option value="tersedia">Tersedia</option>
+                        <option value="renovasi">Renovasi / Pemeliharaan</option>
+                        <option value="nonaktif">Nonaktif</option>
+                      </select>
+                    </div>
+
+                    <div className="flex justify-end gap-2 pt-2 border-t border-line">
+                      <button
+                        type="button"
+                        onClick={() => setEditingRoom(null)}
+                        className="rounded-xl border border-line px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 cursor-pointer"
+                      >
+                        Batal
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={isSavingMaster}
+                        className="rounded-xl bg-brand px-4 py-2 text-xs font-semibold text-white hover:bg-brand-dark disabled:opacity-50 cursor-pointer"
+                      >
+                        {isSavingMaster ? "Menyimpan..." : "Simpan Perubahan"}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -866,6 +1090,7 @@ export default function AdminApprovalPage() {
                     <th className="px-4 py-3">Nama Lembaga</th>
                     <th className="px-4 py-3">Kode</th>
                     <th className="px-4 py-3">Deskripsi</th>
+                    <th className="px-4 py-3">Status</th>
                     <th className="px-4 py-3 text-right">Aksi</th>
                   </tr>
                 </thead>
@@ -873,7 +1098,7 @@ export default function AdminApprovalPage() {
                   {loadingLembaga ? (
                     <tr>
                       <td
-                        colSpan={4}
+                        colSpan={5}
                         className="py-8 text-center text-slate-400"
                       >
                         Memuat daftar lembaga...
@@ -891,20 +1116,62 @@ export default function AdminApprovalPage() {
                         <td className="px-4 py-3 text-slate-500">
                           {String(lb.description ?? "-")}
                         </td>
-                        <td className="px-4 py-3 text-right">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              void handleDeleteMaster(
-                                "lembaga",
-                                lb.id,
-                                String(lb.name ?? "lembaga"),
-                              )
-                            }
-                            className="inline-flex items-center gap-1 rounded-lg bg-red-50 px-2.5 py-1 font-semibold text-red-600 hover:bg-red-100 cursor-pointer"
+                        <td className="px-4 py-3">
+                          <span
+                            className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
+                              lb.is_active !== false
+                                ? "bg-emerald-50 text-emerald-700"
+                                : "bg-slate-100 text-slate-600"
+                            }`}
                           >
-                            <Trash2 className="size-3.5" /> Hapus
-                          </button>
+                            {lb.is_active !== false ? "Aktif" : "Nonaktif"}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingLembaga(lb);
+                                setEditLembagaForm({
+                                  name: lb.name,
+                                  code: lb.code || "",
+                                  description: lb.description || "",
+                                  is_active: lb.is_active !== false,
+                                });
+                              }}
+                              className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2 py-1 font-semibold text-slate-700 hover:bg-slate-200 cursor-pointer"
+                              title="Edit lembaga"
+                            >
+                              <Pencil className="size-3.5" /> Edit
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleToggleLembagaStatus(lb)}
+                              className={`rounded-lg px-2 py-1 text-[11px] font-semibold cursor-pointer ${
+                                lb.is_active !== false
+                                  ? "bg-amber-50 text-amber-700 hover:bg-amber-100"
+                                  : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                              }`}
+                              title="Ubah status keaktifan"
+                            >
+                              {lb.is_active !== false ? "Nonaktifkan" : "Aktifkan"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void handleDeleteMaster(
+                                  "lembaga",
+                                  lb.id,
+                                  String(lb.name ?? "lembaga"),
+                                )
+                              }
+                              className="inline-flex items-center gap-1 rounded-lg bg-red-50 px-2.5 py-1 font-semibold text-red-600 hover:bg-red-100 cursor-pointer"
+                              title="Hapus lembaga"
+                            >
+                              <Trash2 className="size-3.5" /> Hapus
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -912,6 +1179,106 @@ export default function AdminApprovalPage() {
                 </tbody>
               </table>
             </div>
+
+            {/* MODAL EDIT LEMBAGA */}
+            {editingLembaga && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
+                <div className="w-full max-w-lg rounded-3xl border border-line bg-white p-6 shadow-2xl">
+                  <div className="flex items-center justify-between pb-4 border-b border-line">
+                    <div>
+                      <h3 className="text-base font-bold text-ink">Edit Data Lembaga</h3>
+                      <p className="text-xs text-slate-500">Perbarui informasi lembaga kemahasiswaan</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setEditingLembaga(null)}
+                      className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 cursor-pointer"
+                    >
+                      <X className="size-5" />
+                    </button>
+                  </div>
+
+                  <form onSubmit={(e) => void handleUpdateLembaga(e)} className="mt-4 space-y-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">
+                        Nama Lembaga
+                      </label>
+                      <input
+                        required
+                        value={editLembagaForm.name}
+                        onChange={(e) =>
+                          setEditLembagaForm({ ...editLembagaForm, name: e.target.value })
+                        }
+                        className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs outline-none focus:border-brand"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">
+                        Singkatan / Kode
+                      </label>
+                      <input
+                        value={editLembagaForm.code}
+                        onChange={(e) =>
+                          setEditLembagaForm({ ...editLembagaForm, code: e.target.value })
+                        }
+                        className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs outline-none focus:border-brand"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">
+                        Keterangan
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={editLembagaForm.description}
+                        onChange={(e) =>
+                          setEditLembagaForm({ ...editLembagaForm, description: e.target.value })
+                        }
+                        className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs outline-none focus:border-brand resize-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">
+                        Status Keaktifan
+                      </label>
+                      <select
+                        value={editLembagaForm.is_active ? "true" : "false"}
+                        onChange={(e) =>
+                          setEditLembagaForm({
+                            ...editLembagaForm,
+                            is_active: e.target.value === "true",
+                          })
+                        }
+                        className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs outline-none focus:border-brand"
+                      >
+                        <option value="true">Aktif</option>
+                        <option value="false">Nonaktif</option>
+                      </select>
+                    </div>
+
+                    <div className="flex justify-end gap-2 pt-2 border-t border-line">
+                      <button
+                        type="button"
+                        onClick={() => setEditingLembaga(null)}
+                        className="rounded-xl border border-line px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 cursor-pointer"
+                      >
+                        Batal
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={isSavingMaster}
+                        className="rounded-xl bg-brand px-4 py-2 text-xs font-semibold text-white hover:bg-brand-dark disabled:opacity-50 cursor-pointer"
+                      >
+                        {isSavingMaster ? "Menyimpan..." : "Simpan Perubahan"}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -1014,10 +1381,12 @@ export default function AdminApprovalPage() {
               </div>
               <button
                 type="button"
+                disabled={isExporting}
                 onClick={() => void handleExportRekap()}
-                className="inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-2 text-xs font-semibold text-white hover:bg-brand-dark cursor-pointer"
+                className="inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-2 text-xs font-semibold text-white hover:bg-brand-dark disabled:opacity-50 cursor-pointer"
               >
-                <Download className="size-4" /> Unduh Rekap Excel (.xlsx)
+                <Download className="size-4" />{" "}
+                {isExporting ? "Mengekspor..." : "Ekspor Seluruh Rekap (.xlsx)"}
               </button>
             </div>
 

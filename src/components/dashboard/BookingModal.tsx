@@ -13,7 +13,7 @@ import {
   Phone,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { createBookingApi } from "../../api/facilityService";
+import { createBookingApi, getRoomAvailabilityApi } from "../../api/facilityService";
 import { getApiErrorMessage } from "../../api/axiosClient";
 import { useAuthStore } from "../../store/useAuthStore";
 import {
@@ -144,6 +144,35 @@ export default function BookingModal({
     setSubmitError(null);
 
     try {
+      // Validasi ketersediaan jadwal agar tidak bentrok
+      try {
+        const availRes = await getRoomAvailabilityApi(data.room_id, data.date);
+        const availData = ((availRes?.data || availRes || {}) as unknown) as Record<string, unknown>;
+        const booked = (Array.isArray(availData.booked_slots)
+          ? availData.booked_slots
+          : Array.isArray(availData.bookings)
+            ? availData.bookings
+            : Array.isArray(availData)
+              ? availData
+              : []) as Record<string, unknown>[];
+
+        const hasConflict = booked.some((b) => {
+          const s = String(b.start_time ?? "").slice(0, 5);
+          const e = String(b.end_time ?? "").slice(0, 5);
+          const isOccupied = b.state ? b.state !== "kosong" : b.is_available === false || true;
+          return isOccupied && s && e && data.start_time < e && data.end_time > s;
+        });
+
+        if (hasConflict) {
+          setSubmitError(
+            "✨ Maaf ya, ruangan ini sudah terisi pada rentang jam tersebut. Silakan pilih ruangan lain atau atur jam kegiatan yang berbeda ya!",
+          );
+          return;
+        }
+      } catch {
+        // Abaikan jika fetch ketersediaan gagal, backend tetap memvalidasi
+      }
+
       const res = await createBookingApi({
         room_id: String(data.room_id),
         lembaga_id: String(data.lembaga_id),
@@ -230,7 +259,15 @@ export default function BookingModal({
 
       setCreatedTicket(formattedBooking);
     } catch (err: unknown) {
-      setSubmitError(getApiErrorMessage(err));
+      const msg = getApiErrorMessage(err);
+      const isConflict =
+        /conflict|sudah|terisi|bentrok|already|409/i.test(msg) ||
+        (err as { response?: { status?: number } })?.response?.status === 409;
+      setSubmitError(
+        isConflict
+          ? "✨ Maaf ya, ruangan ini sudah dipesan pada waktu yang sama oleh pengaju lain. Silakan pilih waktu atau ruangan alternatif yang manis untuk kegiatanmu!"
+          : msg,
+      );
     }
   };
 

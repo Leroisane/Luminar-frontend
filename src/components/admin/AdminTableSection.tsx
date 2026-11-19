@@ -6,6 +6,7 @@ import {
   ExternalLink,
   FileText,
   Plus,
+  Printer,
   Search,
   X,
 } from "lucide-react";
@@ -27,7 +28,7 @@ import {
 import { cn } from "../../utils/helpers";
 
 interface Props {
-  globalSearch: string;
+  globalSearch?: string;
 }
 
 const statusOptions = [
@@ -242,7 +243,7 @@ const initialManualForm = {
   document_url: "",
 };
 
-export default function AdminTableSection({ globalSearch }: Props) {
+export default function AdminTableSection({ globalSearch = "" }: Props) {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const perPage = 20;
@@ -272,6 +273,34 @@ export default function AdminTableSection({ globalSearch }: Props) {
 
   // Modal Tambah Manual Admin
   const [manualModalOpen, setManualModalOpen] = useState(false);
+
+  // Modal Draft Surat
+  const [draftModalOpen, setDraftModalOpen] = useState(false);
+  const [letterNumber, setLetterNumber] = useState("0412/UN10.F15.01/TU/2026");
+  const [letterActivity, setLetterActivity] = useState("");
+  const [letterOrg, setLetterOrg] = useState("");
+  const [letterFacility, setLetterFacility] = useState("");
+  const [letterSchedule, setLetterSchedule] = useState("");
+
+  const handleOpenDraftModal = (req: ExtendedAdminBooking) => {
+    setLetterNumber(`0412/UN10.F15.01/TU/${new Date().getFullYear()}`);
+    setLetterOrg(req.org || "Organisasi Mahasiswa FILKOM UB");
+    setLetterActivity(req.purpose || req.agenda || "Kegiatan Kemahasiswaan");
+    setLetterFacility(req.room || "Fasilitas Sarpras FILKOM");
+    setLetterSchedule(`${req.date} • ${req.time} WIB`);
+    setDraftModalOpen(true);
+  };
+
+  const handlePrintLetter = () => {
+    document.body.classList.add("printing-letter");
+    const cleanup = () => {
+      document.body.classList.remove("printing-letter");
+      window.removeEventListener("afterprint", cleanup);
+    };
+    window.addEventListener("afterprint", cleanup);
+    window.print();
+    window.setTimeout(cleanup, 1000);
+  };
   const [manualForm, setManualForm] = useState(initialManualForm);
   const [isSavingManual, setIsSavingManual] = useState(false);
 
@@ -695,7 +724,7 @@ export default function AdminTableSection({ globalSearch }: Props) {
                 )}
                 <button
                   type="button"
-                  onClick={() => void handleOpenDraft(selectedReq.backendId)}
+                  onClick={() => handleOpenDraftModal(selectedReq)}
                   className="inline-flex items-center gap-1 font-semibold text-sky-700 hover:underline cursor-pointer"
                 >
                   <FileText className="size-3.5" /> Draft Surat Resmi
@@ -1151,6 +1180,145 @@ export default function AdminTableSection({ globalSearch }: Props) {
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* Modal Pembuat Draf Surat Perizinan */}
+      {draftModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs print:static print:p-0 print:bg-transparent">
+          <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-3xl border border-line bg-white p-6 shadow-2xl print:max-h-none print:w-full print:max-w-none print:border-none print:shadow-none print:p-0">
+            <div className="flex items-center justify-between border-b border-line pb-4 print:hidden">
+              <div className="flex items-center gap-2.5">
+                <span className="flex size-9 items-center justify-center rounded-xl bg-emerald-50 text-brand">
+                  <FileText className="size-4" />
+                </span>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">
+                    Draf Surat Perizinan Resmi
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Sesuaikan informasi perizinan dan cetak surat resmi
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDraftModalOpen(false)}
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 cursor-pointer"
+              >
+                <X className="size-5" />
+              </button>
+            </div>
+
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 print:hidden">
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-slate-700">
+                  Nomor Surat
+                </label>
+                <input
+                  value={letterNumber}
+                  onChange={(e) => setLetterNumber(e.target.value)}
+                  className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs outline-none focus:border-brand"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-slate-700">
+                  Organisasi Pemohon
+                </label>
+                <input
+                  value={letterOrg}
+                  onChange={(e) => setLetterOrg(e.target.value)}
+                  className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs outline-none focus:border-brand"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-slate-700">
+                  Nama Kegiatan
+                </label>
+                <input
+                  value={letterActivity}
+                  onChange={(e) => setLetterActivity(e.target.value)}
+                  className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs outline-none focus:border-brand"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-slate-700">
+                  Ruangan / Fasilitas Disetujui
+                </label>
+                <input
+                  value={letterFacility}
+                  onChange={(e) => setLetterFacility(e.target.value)}
+                  className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs outline-none focus:border-brand"
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="mb-1 block text-xs font-semibold text-slate-700">
+                  Waktu Penggunaan
+                </label>
+                <input
+                  value={letterSchedule}
+                  onChange={(e) => setLetterSchedule(e.target.value)}
+                  className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs outline-none focus:border-brand"
+                />
+              </div>
+            </div>
+
+            {/* Pratinjau Surat Resmi */}
+            <div className="mt-4 rounded-xl border border-line bg-slate-50 p-6 text-xs leading-relaxed text-slate-800 print:mt-0 print:rounded-none print:border-none print:bg-white print:p-0 print:text-sm print:leading-loose">
+              <p className="text-center font-bold uppercase tracking-wide text-slate-900">
+                Kementerian Pendidikan Tinggi, Sains, dan Teknologi
+                <br />
+                Fakultas Ilmu Komputer – Universitas Brawijaya
+              </p>
+              <hr className="my-3 border-slate-300 print:my-4 print:border-slate-800" />
+              <p>
+                <strong>Nomor:</strong> {letterNumber}
+                <br />
+                <strong>Hal:</strong> Izin Penggunaan Sarana dan Prasarana
+              </p>
+              <p className="mt-3 print:mt-5">
+                Dengan ini Koordinator Sarana &amp; Prasarana FILKOM UB
+                memberikan izin kepada <strong>{letterOrg}</strong> untuk
+                menggunakan fasilitas <strong>{letterFacility}</strong> dalam
+                rangka kegiatan <strong>{letterActivity}</strong> pada{" "}
+                <strong>{letterSchedule}</strong>.
+              </p>
+              <p className="mt-6 text-right font-semibold print:mt-12">
+                Koordinator Sarpras &amp; Lab,
+                <br />
+                <span className="mt-8 inline-block font-bold text-slate-900 print:mt-14">
+                  Koordinator Bagian Umum &amp; Sarpras
+                </span>
+              </p>
+            </div>
+
+            <div className="mt-5 flex justify-end gap-2 print:hidden">
+              {selectedReq?.backendId && (
+                <button
+                  type="button"
+                  onClick={() => void handleOpenDraft(selectedReq.backendId)}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-sky-200 bg-sky-50 px-4 py-2 text-xs font-semibold text-sky-700 hover:bg-sky-100 cursor-pointer"
+                  title="Unduh draf PDF langsung dari server backend"
+                >
+                  <Download className="size-3.5" /> Unduh Dokumen Asli
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setDraftModalOpen(false)}
+                className="rounded-xl border border-line px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 cursor-pointer"
+              >
+                Tutup
+              </button>
+              <button
+                type="button"
+                onClick={handlePrintLetter}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-brand px-4 py-2 text-xs font-semibold text-white hover:bg-brand-dark cursor-pointer"
+              >
+                <Printer className="size-3.5" /> Cetak / Simpan PDF
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </section>

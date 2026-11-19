@@ -39,6 +39,14 @@ const filters: Filter[] = [
   "Studio & Multimedia",
 ];
 
+const filterDots: Record<Filter, string | null> = {
+  "Semua Ruang & Alat": null,
+  "Auditorium": "bg-brand",
+  "Lab Komputer": "bg-emerald-500",
+  "Ruang Kelas": "bg-teal-500",
+  "Studio & Multimedia": "bg-indigo-500",
+};
+
 const weekdays = [
   "Minggu",
   "Senin",
@@ -308,52 +316,48 @@ export default function AdminCalendar() {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-col gap-3 border-y border-line px-5 py-4 sm:px-6 xl:flex-row xl:items-center xl:justify-between">
-        <div className="-mx-1 flex items-center gap-2 overflow-x-auto px-1 pb-1 xl:pb-0">
+      <div className="flex flex-col gap-3 border-y border-line px-5 py-4 sm:px-6">
+        <div className="flex flex-wrap items-center gap-2">
           <span className="shrink-0 pr-1 text-xs font-semibold tracking-wide text-slate-500">
             KATEGORI:
           </span>
-          {filters.map((f) => (
-            <button
-              key={f}
-              type="button"
-              onClick={() => setFilter(f)}
-              aria-pressed={filter === f}
-              className={cn(
-                "shrink-0 rounded-full border px-4 py-1.5 text-sm font-semibold transition-colors cursor-pointer",
-                filter === f
-                  ? "border-brand bg-brand text-white"
-                  : "border-line bg-slate-50 text-slate-700 hover:bg-slate-100",
-              )}
-            >
-              {f}
-            </button>
-          ))}
+          {filters.map((f) => {
+            const dot = filterDots[f];
+            return (
+              <button
+                key={f}
+                type="button"
+                onClick={() => setFilter(f)}
+                aria-pressed={filter === f}
+                className={cn(
+                  "inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-colors cursor-pointer",
+                  filter === f
+                    ? "border-brand bg-brand text-white"
+                    : "border-line bg-slate-50 text-slate-700 hover:bg-slate-100",
+                )}
+              >
+                {dot && (
+                  <span
+                    className={cn(
+                      "size-2 rounded-full",
+                      filter === f ? "bg-white" : dot,
+                    )}
+                  />
+                )}
+                {f}
+              </button>
+            );
+          })}
         </div>
-        <ul className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-medium text-slate-600">
-          {legend.map((l) => (
-            <li key={l.label} className="flex items-center gap-1.5">
-              <span className={cn("size-2.5 rounded-[3px]", l.dot)} />
-              {l.label}
-            </li>
-          ))}
-        </ul>
       </div>
 
       {/* Konten: Tampilan Timeline Penuh vs Grid Kalender */}
       {view === "timeline" ? (
         <div className="px-5 py-6 sm:px-6">
-          <div className="mb-4 flex items-center justify-between">
+          <div className="mb-4">
             <h3 className="text-sm font-bold uppercase tracking-wide text-slate-500">
               Agenda Kronologis ({timelineEvents.length} Jadwal Terdaftar)
             </h3>
-            <button
-              type="button"
-              onClick={() => setView("month")}
-              className="text-xs font-semibold text-brand hover:underline cursor-pointer"
-            >
-              Kembali ke Tampilan Kalender
-            </button>
           </div>
 
           {timelineEvents.length === 0 ? (
@@ -520,7 +524,7 @@ export default function AdminCalendar() {
               key={l.label}
               className="flex items-center gap-2 text-slate-600"
             >
-              <span className={cn("size-3 rounded-[4px]", l.dot)} />
+              <span className={cn("size-2.5 rounded-full", l.dot)} />
               {l.label}
             </li>
           ))}
