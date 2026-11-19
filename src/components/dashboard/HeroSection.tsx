@@ -1,7 +1,6 @@
 import { useState, type FormEvent } from "react";
 import {
   ArrowRight,
-  CalendarDays,
   Camera,
   Presentation,
   Search,
@@ -9,6 +8,7 @@ import {
   Video,
 } from "lucide-react";
 import { toISODate } from "../../utils/helpers";
+import heroFilkom from "../../assets/hero-filkom.png";
 
 export interface SearchPayload {
   query: string;
@@ -61,14 +61,12 @@ export default function HeroSection({ selectedDate, onSearch }: Props) {
   return (
     <section className="mx-auto w-full max-w-[1400px] px-4 pt-6 sm:px-6 lg:px-10">
       {/* Hero banner */}
-      <div className="relative isolate overflow-hidden rounded-3xl bg-gradient-to-br from-[#16301f] via-[#1f4630] to-[#0f2217]">
+      <div className="relative isolate overflow-hidden rounded-3xl bg-slate-900">
         <img
-          src="/images/hero-filkom.jpg"
-          alt=""
-          className="absolute inset-0 -z-20 size-full object-cover"
-          onError={(e) => (e.currentTarget.style.display = "none")}
+          src={heroFilkom}
+          alt="Lounge & Fasilitas FILKOM UB"
+          className="absolute inset-0 -z-10 size-full object-cover"
         />
-        <div className="absolute inset-0 -z-10 bg-gradient-to-b from-black/45 via-black/55 to-black/70" />
 
         <div className="flex min-h-[420px] flex-col items-center justify-center px-5 py-14 text-center sm:min-h-[490px] sm:px-10">
           <span className="inline-flex items-center gap-2 rounded-full bg-black/40 px-4 py-1.5 text-xs font-semibold text-white backdrop-blur">
@@ -97,13 +95,17 @@ export default function HeroSection({ selectedDate, onSearch }: Props) {
                 className="w-full min-w-0 bg-transparent text-sm text-ink outline-none placeholder:text-slate-400"
               />
             </label>
-            <label className="flex shrink-0 items-center gap-2 border-t border-line px-3 py-2 sm:border-l sm:border-t-0">
-              <CalendarDays className="size-4 shrink-0 text-slate-500" />
+            <label className="relative flex shrink-0 items-center border-t border-line px-3 py-2 sm:border-l sm:border-t-0">
               <input
                 type="date"
                 value={dateValue}
                 onChange={(e) => setDateValue(e.target.value)}
-                className="bg-transparent text-sm font-medium text-slate-700 outline-none"
+                onClick={(e) => {
+                  try {
+                    e.currentTarget.showPicker();
+                  } catch {}
+                }}
+                className="relative cursor-pointer bg-transparent pl-7 pr-1 text-sm font-medium text-slate-700 outline-none [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:left-0.5 [&::-webkit-calendar-picker-indicator]:cursor-pointer"
               />
             </label>
             <button
